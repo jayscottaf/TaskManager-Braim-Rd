@@ -1,7 +1,12 @@
+export const dynamic = "force-dynamic";
+
 import { Suspense } from "react";
 import { getTasks } from "@/lib/notion";
 import { TaskCard } from "@/components/task-card";
 import { TaskFilters } from "@/components/task-filters";
+import { SeasonalBanner } from "@/components/seasonal-banner";
+import { OverdueBanner } from "@/components/overdue-banner";
+import { AIPanel } from "@/components/ai-panel";
 import type { Status, Priority, Area } from "@/lib/types";
 
 interface PageProps {
@@ -29,11 +34,14 @@ async function TaskList({
   }
 
   return (
-    <div className="flex flex-col gap-3 px-4">
-      {tasks.map((task) => (
-        <TaskCard key={task.id} task={task} />
-      ))}
-    </div>
+    <>
+      <OverdueBanner tasks={tasks} />
+      <div className="flex flex-col gap-3 px-4">
+        {tasks.map((task) => (
+          <TaskCard key={task.id} task={task} />
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -71,6 +79,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         <p className="text-sm text-gray-500 mt-0.5">Home Maintenance</p>
       </div>
 
+      {/* Seasonal Banner */}
+      <SeasonalBanner />
+
       {/* Filters */}
       <Suspense fallback={null}>
         <TaskFilters />
@@ -84,6 +95,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           area={params.area as Area | undefined}
         />
       </Suspense>
+
+      {/* AI Panel */}
+      <AIPanel />
     </div>
   );
 }

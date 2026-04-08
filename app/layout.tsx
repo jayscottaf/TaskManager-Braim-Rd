@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { BottomNav } from "@/components/bottom-nav";
+import { ToastProvider } from "@/components/toast";
+import { ServiceWorkerRegister } from "@/components/sw-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -35,6 +37,8 @@ export default function RootLayout({
       <body className="min-h-full bg-background text-foreground">
         <main className="pb-20">{children}</main>
         <BottomNav />
+        <ToastProvider />
+        <ServiceWorkerRegister />
       </body>
     </html>
   );
