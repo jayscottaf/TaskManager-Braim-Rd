@@ -1,11 +1,8 @@
 import { Client } from "@notionhq/client";
 import type {
   PageObjectResponse,
+  QueryDatabaseParameters,
 } from "@notionhq/client/build/src/api-endpoints";
-import type {
-  QueryDataSourceParameters,
-  QueryDataSourceResponse,
-} from "@notionhq/client/build/src/api-endpoints/data-sources";
 import type {
   Task,
   CreateTaskInput,
@@ -19,7 +16,6 @@ import type {
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 const databaseId = process.env.NOTION_DATABASE_ID!;
-const dataSourceId = process.env.NOTION_DATA_SOURCE_ID || databaseId;
 
 // ── Helpers to read Notion properties ──────────────────────────────
 
@@ -110,42 +106,40 @@ export interface GetTasksOptions {
   area?: Area;
 }
 
-type FilterItem = NonNullable<QueryDataSourceParameters["filter"]>;
-
 export async function getTasks(options?: GetTasksOptions): Promise<Task[]> {
-  const filters: Array<Exclude<FilterItem, { or: unknown } | { and: unknown }>> = [];
+  const filters: QueryDatabaseParameters["filter"][] = [];
 
   if (options?.status) {
     filters.push({
       property: "Status",
       status: { equals: options.status },
-    } as Exclude<FilterItem, { or: unknown } | { and: unknown }>);
+    } as QueryDatabaseParameters["filter"]);
   }
   if (options?.priority) {
     filters.push({
       property: "Priority",
       select: { equals: options.priority },
-    } as Exclude<FilterItem, { or: unknown } | { and: unknown }>);
+    } as QueryDatabaseParameters["filter"]);
   }
   if (options?.area) {
     filters.push({
       property: "Area",
       select: { equals: options.area },
-    } as Exclude<FilterItem, { or: unknown } | { and: unknown }>);
+    } as QueryDatabaseParameters["filter"]);
   }
 
-  const query: QueryDataSourceParameters = {
-    data_source_id: dataSourceId,
+  const query: QueryDatabaseParameters = {
+    database_id: databaseId,
     sorts: [{ property: "Due Date", direction: "ascending" }],
   };
 
   if (filters.length === 1) {
-    query.filter = filters[0] as FilterItem;
+    query.filter = filters[0];
   } else if (filters.length > 1) {
-    query.filter = { and: filters } as unknown as FilterItem;
+    query.filter = { and: filters } as QueryDatabaseParameters["filter"];
   }
 
-  const response: QueryDataSourceResponse = await notion.dataSources.query(query);
+  const response = await notion.databases.query(query);
   return response.results
     .filter((p): p is PageObjectResponse => "properties" in p)
     .map(pageToTask);
@@ -157,7 +151,8 @@ export async function getTask(id: string): Promise<Task> {
 }
 
 export async function createTask(input: CreateTaskInput): Promise<Task> {
-  const properties: Record<string, unknown> = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const properties: Record<string, any> = {
     Task: { title: [{ text: { content: input.task } }] },
   };
 
@@ -199,8 +194,7 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
 
   const page = (await notion.pages.create({
     parent: { database_id: databaseId },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    properties: properties as any,
+    properties,
   })) as PageObjectResponse;
 
   return pageToTask(page);
@@ -210,7 +204,8 @@ export async function updateTask(
   id: string,
   input: UpdateTaskInput
 ): Promise<Task> {
-  const properties: Record<string, unknown> = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const properties: Record<string, any> = {};
 
   if (input.task !== undefined) {
     properties["Task"] = { title: [{ text: { content: input.task } }] };
@@ -261,8 +256,7 @@ export async function updateTask(
 
   const page = (await notion.pages.update({
     page_id: id,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    properties: properties as any,
+    properties,
   })) as PageObjectResponse;
 
   return pageToTask(page);

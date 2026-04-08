@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.86.0",
-    "@notionhq/client": "^5.17.0",
+    "@notionhq/client": "^2.2.15",
     "date-fns": "^4.1.0",
     "lucide-react": "^1.7.0",
     "next": "16.2.2",
