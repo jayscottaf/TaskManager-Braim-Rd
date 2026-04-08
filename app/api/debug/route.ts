@@ -17,9 +17,10 @@ export async function GET() {
   const notion = new Client({ auth: apiKey });
 
   try {
-    const db = await notion.databases.retrieve({ database_id: databaseId });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = (await notion.databases.retrieve({ database_id: databaseId })) as any;
     const title =
-      db.title && db.title.length > 0 ? db.title[0].plain_text : "(untitled)";
+      Array.isArray(db.title) && db.title.length > 0 ? db.title[0].plain_text : "(untitled)";
     return NextResponse.json({
       ok: true,
       database: title,
