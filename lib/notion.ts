@@ -18,7 +18,8 @@ import type {
 } from "./types";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
-const dataSourceId = process.env.NOTION_DATABASE_ID!;
+const databaseId = process.env.NOTION_DATABASE_ID!;
+const dataSourceId = process.env.NOTION_DATA_SOURCE_ID || databaseId;
 
 // ── Helpers to read Notion properties ──────────────────────────────
 
@@ -197,7 +198,7 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   }
 
   const page = (await notion.pages.create({
-    parent: { database_id: dataSourceId },
+    parent: { database_id: databaseId },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     properties: properties as any,
   })) as PageObjectResponse;
