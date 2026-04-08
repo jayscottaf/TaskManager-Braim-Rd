@@ -22,7 +22,23 @@ async function TaskList({
   priority?: Priority;
   area?: Area;
 }) {
-  const tasks = await getTasks({ status, priority, area });
+  let tasks;
+  try {
+    tasks = await getTasks({ status, priority, area });
+  } catch (err: unknown) {
+    const e = err as { code?: string; status?: number; message?: string };
+    return (
+      <div className="mx-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+        <p className="font-bold text-red-700">Notion API Error</p>
+        <p className="text-sm text-red-600 mt-1">{e.message}</p>
+        {e.code && <p className="text-xs text-gray-500 mt-1">Code: {e.code}</p>}
+        <p className="text-xs text-gray-400 mt-2">
+          Check: NOTION_API_KEY and NOTION_DATABASE_ID in Vercel env vars.
+          Ensure the integration is connected to the database in Notion.
+        </p>
+      </div>
+    );
+  }
 
   if (tasks.length === 0) {
     return (
