@@ -15,8 +15,9 @@ import {
   subMonths,
   isPast,
 } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Repeat } from "lucide-react";
 import type { Task, Priority } from "@/lib/types";
+import { generateOccurrences } from "@/lib/recurrence";
 import Link from "next/link";
 
 const PRIORITY_COLORS: Record<Priority, { bg: string; border: string; text: string }> = {
@@ -32,16 +33,26 @@ const STATUS_STYLES: Record<string, string> = {
   "On Hold": "opacity-60 italic",
 };
 
+function isVirtual(task: Task): boolean {
+  return task.id.includes("_recur_");
+}
+
+function realId(task: Task): string {
+  return task.id.split("_recur_")[0];
+}
+
 function TaskPill({ task }: { task: Task }) {
   const colors = task.priority ? PRIORITY_COLORS[task.priority] : DEFAULT_COLORS;
   const statusStyle = STATUS_STYLES[task.status] || "";
+  const virtual = isVirtual(task);
 
   return (
     <Link
-      href={`/task/${task.id}`}
-      className={`block px-1.5 py-0.5 rounded text-[11px] leading-tight truncate border-l-2 ${colors.bg} ${colors.border} ${colors.text} ${statusStyle} hover:brightness-95 transition-all`}
+      href={`/task/${realId(task)}`}
+      className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] leading-tight border-l-2 ${colors.bg} ${colors.border} ${colors.text} ${statusStyle} ${virtual ? "border-dashed" : ""} hover:brightness-95 transition-all`}
     >
-      {task.task}
+      {virtual && <Repeat className="w-2.5 h-2.5 flex-shrink-0 opacity-50" />}
+      <span className="truncate">{task.task}</span>
     </Link>
   );
 }
@@ -67,8 +78,18 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
   const calEnd = endOfWeek(monthEnd);
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
 
+  // Expand recurring tasks into virtual instances for the visible range
+  const allTasks = useMemo(() => {
+    const rangeStart = format(calStart, "yyyy-MM-dd");
+    const rangeEnd = format(calEnd, "yyyy-MM-dd");
+    const virtualTasks = tasks.flatMap((t) =>
+      generateOccurrences(t, rangeStart, rangeEnd)
+    );
+    return [...tasks, ...virtualTasks];
+  }, [tasks, calStart, calEnd]);
+
   function getTasksForDay(day: Date): Task[] {
-    return tasks.filter((t) => {
+    return allTasks.filter((t) => {
       if (!t.dueDate) return false;
       const start = new Date(t.dueDate.start + "T00:00:00");
       if (t.dueDate.end) {
@@ -82,7 +103,7 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
   const selectedTasks = useMemo(
     () => (selectedDate ? getTasksForDay(selectedDate) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedDate, tasks]
+    [selectedDate, allTasks]
   );
 
   const today = new Date();
@@ -210,30 +231,39 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
                   t.dueDate &&
                   t.dueDate.start < format(today, "yyyy-MM-dd");
 
+                const virtual = isVirtual(t);
+
                 return (
                   <Link
                     key={t.id}
-                    href={`/task/${t.id}`}
-                    className={`flex items-start gap-3 rounded-lg border border-gray-200 p-3 active:bg-gray-50 border-l-4 ${colors.border}`}
+                    href={`/task/${realId(t)}`}
+                    className={`flex items-start gap-3 rounded-lg border p-3 active:bg-gray-50 border-l-4 ${colors.border} ${virtual ? "border-dashed border-gray-300" : "border-gray-200"}`}
                   >
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm font-medium text-gray-900 ${t.status === "Completed" ? "line-through opacity-60" : ""}`}>
+                        {virtual && <Repeat className="w-3 h-3 inline mr-1 opacity-50" />}
                         {t.task}
                       </p>
                       <div className="flex flex-wrap items-center gap-2 mt-1">
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                          t.status === "Completed"
-                            ? "bg-green-100 text-green-700"
-                            : t.status === "In Progress"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-gray-100 text-gray-600"
-                        }`}>
-                          {t.status}
-                        </span>
+                        {virtual ? (
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                            {t.frequency}
+                          </span>
+                        ) : (
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                            t.status === "Completed"
+                              ? "bg-green-100 text-green-700"
+                              : t.status === "In Progress"
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-gray-100 text-gray-600"
+                          }`}>
+                            {t.status}
+                          </span>
+                        )}
                         {t.area && (
                           <span className="text-xs text-gray-500">{t.area}</span>
                         )}
-                        {isOverdue && (
+                        {isOverdue && !virtual && (
                           <span className="text-xs text-red-600 font-medium">Overdue</span>
                         )}
                         {t.costEstimate !== null && (

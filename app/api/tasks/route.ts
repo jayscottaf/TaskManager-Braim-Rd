@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTasks, createTask } from "@/lib/notion";
 import { checkAuth } from "@/lib/auth";
-import { advanceDate } from "@/lib/recurrence";
-import type { Status, Priority, Area, Frequency } from "@/lib/types";
+import type { Status, Priority, Area } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
   const authError = checkAuth(request);
@@ -38,21 +37,6 @@ export async function POST(request: NextRequest) {
       );
     }
     const task = await createTask(body);
-
-    // If recurring with a due date, create the next occurrence immediately
-    const freq = body.frequency as Frequency | undefined;
-    if (freq && freq !== "One-time" && body.dueDate?.start) {
-      const nextStart = advanceDate(body.dueDate.start, freq);
-      const nextEnd = body.dueDate.end
-        ? advanceDate(body.dueDate.end, freq)
-        : undefined;
-      await createTask({
-        ...body,
-        status: undefined, // default "Not Started"
-        dueDate: { start: nextStart, ...(nextEnd ? { end: nextEnd } : {}) },
-      });
-    }
-
     return NextResponse.json(task, { status: 201 });
   } catch (error) {
     console.error("POST /api/tasks error:", error);
