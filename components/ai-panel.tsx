@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Plus, X, Loader2 } from "lucide-react";
+import { Sparkles, Plus, X, Loader2, AlertCircle } from "lucide-react";
 import type { AISuggestion } from "@/lib/ai";
 
 export function AIPanel() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
   const [adding, setAdding] = useState<string | null>(null);
 
@@ -23,17 +24,25 @@ export function AIPanel() {
     setOpen(true);
     if (suggestions.length > 0) return;
     setLoading(true);
+    setError(null);
     try {
       const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
       const res = await fetch("/api/ai/suggest", {
         headers: secret ? { "x-app-secret": secret } : {},
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) setSuggestions(data);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || `API returned ${res.status}`);
+        return;
       }
-    } catch {
-      // ignore
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setSuggestions(data);
+      } else if (data.error) {
+        setError(data.error);
+      }
+    } catch (e: unknown) {
+      setError((e as Error).message || "Failed to load suggestions");
     } finally {
       setLoading(false);
     }
@@ -65,28 +74,19 @@ export function AIPanel() {
     }
   }
 
-  if (!open) {
-    return (
-      <button
-        onClick={loadSuggestions}
-        className="fixed bottom-20 right-4 bg-neutral-950 text-white px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 hover:bg-neutral-800 active:scale-[0.98] transition-all z-40"
-      >
-        <Sparkles className="w-4 h-4" />
-        <span className="text-sm font-medium">AI Suggestions</span>
-      </button>
-    );
-  }
+  // No floating button — only triggered by bottom nav
+  if (!open) return null;
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-neutral-900 rounded-t-3xl shadow-2xl max-h-[70vh] flex flex-col animate-slide-up">
       <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-blue-600" />
-          <h2 className="font-semibold text-neutral-950">AI Suggestions</h2>
+          <h2 className="font-semibold text-neutral-950 dark:text-neutral-50">AI Suggestions</h2>
         </div>
         <button
           onClick={() => setOpen(false)}
-          className="p-1.5 rounded-lg hover:bg-neutral-100 transition-colors"
+          className="p-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
         >
           <X className="w-5 h-5 text-neutral-400" />
         </button>
@@ -100,10 +100,27 @@ export function AIPanel() {
               Analyzing your tasks...
             </span>
           </div>
+        ) : error ? (
+          <div className="flex flex-col items-center py-8 gap-3">
+            <AlertCircle className="w-6 h-6 text-red-500" />
+            <p className="text-sm text-red-600 dark:text-red-400 text-center">{error}</p>
+            <button
+              onClick={() => { setSuggestions([]); loadSuggestions(); }}
+              className="text-sm text-blue-600 font-medium hover:underline"
+            >
+              Try again
+            </button>
+          </div>
         ) : suggestions.length === 0 ? (
-          <p className="text-center text-neutral-400 py-8 text-sm">
-            No new suggestions right now
-          </p>
+          <div className="flex flex-col items-center py-8 gap-2">
+            <p className="text-neutral-400 text-sm">No new suggestions right now</p>
+            <button
+              onClick={() => { setSuggestions([]); loadSuggestions(); }}
+              className="text-sm text-blue-600 font-medium hover:underline"
+            >
+              Refresh
+            </button>
+          </div>
         ) : (
           <div className="flex flex-col gap-3">
             {suggestions.map((s) => (
@@ -113,7 +130,7 @@ export function AIPanel() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-neutral-950 text-sm">
+                    <h3 className="font-semibold text-neutral-950 dark:text-neutral-50 text-sm">
                       {s.task}
                     </h3>
                     <p className="text-xs text-neutral-500 mt-1">{s.reason}</p>
