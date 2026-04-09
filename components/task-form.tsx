@@ -234,60 +234,59 @@ export function TaskForm({ task, mode }: TaskFormProps) {
         </div>
       </div>
 
-      {/* Area */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Area
-        </label>
-        <select
-          value={area}
-          onChange={(e) => setArea(e.target.value as Area | "")}
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 text-base bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-        >
-          <option value="">Select area...</option>
-          {AREAS.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
+      {/* Area + Sub-location side by side */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
+            Area
+          </label>
+          <select
+            value={area}
+            onChange={(e) => setArea(e.target.value as Area | "")}
+            className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+          >
+            <option value="">Select area...</option>
+            {AREAS.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
+            Sub-location
+          </label>
+          <input
+            type="text"
+            value={subLocation}
+            onChange={(e) => setSubLocation(e.target.value)}
+            placeholder="e.g., master bath"
+            className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+          />
+        </div>
       </div>
 
-      {/* Sub-location */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Sub-location
-        </label>
-        <input
-          type="text"
-          value={subLocation}
-          onChange={(e) => setSubLocation(e.target.value)}
-          placeholder="e.g., master bath, south fence"
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-        />
-      </div>
-
-      {/* Type (multi-select chips) */}
+      {/* Type */}
       <div>
         <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Type
         </label>
-        <div className="flex flex-wrap gap-2">
+        <select
+          value={types[0] || ""}
+          onChange={(e) => {
+            const val = e.target.value as TaskType | "";
+            setTypes(val ? [val] : []);
+          }}
+          className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+        >
+          <option value="">Select type...</option>
           {TASK_TYPES.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => toggleType(t)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                types.includes(t)
-                  ? "bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 shadow-sm"
-                  : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-              }`}
-            >
+            <option key={t} value={t}>
               {t}
-            </button>
+            </option>
           ))}
-        </div>
+        </select>
       </div>
 
       {/* Frequency */}
