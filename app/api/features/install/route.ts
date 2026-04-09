@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
       const field = template.schema[i];
       switch (field.type) {
         case "text":
+        case "textarea":
           properties[field.name] = { rich_text: {} };
           break;
         case "number":

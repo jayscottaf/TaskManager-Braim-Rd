@@ -2,12 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Plus, X, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, X, Loader2, Pencil, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { getTemplate } from "@/lib/feature-templates";
 import { getInstalledFeature, saveInstalledFeature } from "@/lib/feature-store";
 import { DynamicForm } from "@/components/dynamic-form";
 import { PaintScanner } from "@/components/paint-scanner";
+
+// Fields that should never be truncated (shown in full, with whitespace preserved)
+const FULL_DISPLAY_FIELDS = new Set(["Colorant Formula"]);
 
 export default function FeaturePage() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +23,9 @@ export default function FeaturePage() {
   const [showForm, setShowForm] = useState(false);
   const [scanData, setScanData] = useState<Record<string, string> | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [selectedItem, setSelectedItem] = useState<Record<string, any> | null>(null);
+  const [editing, setEditing] = useState(false);
 
   const loadItems = useCallback(async (databaseId: string) => {
     setLoading(true);
@@ -41,7 +47,6 @@ export default function FeaturePage() {
 
   useEffect(() => {
     async function resolveAndLoad() {
-      // First try to resolve from Notion (server-side, cross-device)
       try {
         const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
         const res = await fetch(`/api/features/resolve?featureId=${id}`, {
@@ -50,7 +55,6 @@ export default function FeaturePage() {
         if (res.ok) {
           const data = await res.json();
           if (data.installed && data.databaseId) {
-            // Sync localStorage with the server-resolved database
             saveInstalledFeature(id, data.databaseId);
             setDbId(data.databaseId);
             loadItems(data.databaseId);
@@ -61,7 +65,6 @@ export default function FeaturePage() {
         // Fall through to localStorage
       }
 
-      // Fallback to localStorage
       const installed = getInstalledFeature(id);
       if (!installed) {
         router.push("/store");
@@ -105,7 +108,112 @@ export default function FeaturePage() {
     }
   }
 
+  async function handleEdit(data: Record<string, string>) {
+    if (!dbId || !selectedItem) return;
+    try {
+      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+      const res = await fetch(`/api/features/${id}/items`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(secret ? { "x-app-secret": secret } : {}),
+        },
+        body: JSON.stringify({ pageId: selectedItem.id, ...data }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error);
+      }
+      setEditing(false);
+      setSelectedItem(null);
+      loadItems(dbId);
+    } catch (e: unknown) {
+      setError((e as Error).message);
+    }
+  }
+
   const titleField = template.schema[0].name;
+
+  function formatValue(fieldName: string, fieldType: string, val: unknown): string {
+    if (val === null || val === undefined || val === "") return "";
+    if (fieldType === "number" && (fieldName.toLowerCase().includes("price") || fieldName.toLowerCase().includes("cost") || fieldName.toLowerCase().includes("value"))) {
+      return `$${Number(val).toLocaleString()}`;
+    }
+    return String(val);
+  }
+
+  // Detail/edit overlay
+  if (selectedItem && template) {
+    const editInitial: Record<string, string> = {};
+    for (const field of template.schema) {
+      const v = selectedItem[field.name];
+      if (v !== null && v !== undefined) editInitial[field.name] = String(v);
+    }
+
+    return (
+      <div className="flex flex-col gap-5 pt-6 pb-24 animate-fade-in">
+        {/* Header */}
+        <div className="px-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => { setSelectedItem(null); setEditing(false); }}
+                className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
+              </button>
+              <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">
+                {selectedItem[titleField] || "Untitled"}
+              </h1>
+            </div>
+            <button
+              onClick={() => setEditing(!editing)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.98] transition-all"
+            >
+              {editing ? <X className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+              {editing ? "Cancel" : "Edit"}
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mx-5 px-4 py-3 bg-red-50 dark:bg-red-950/30 rounded-xl text-sm text-red-600">
+            {error}
+          </div>
+        )}
+
+        {editing ? (
+          <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5">
+            <DynamicForm
+              schema={template.schema}
+              onSubmit={handleEdit}
+              initialValues={editInitial}
+              submitLabel="Save Changes"
+            />
+          </div>
+        ) : (
+          <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5 flex flex-col gap-4">
+            {template.schema.slice(1).map((field) => {
+              const val = selectedItem[field.name];
+              const display = formatValue(field.name, field.type, val);
+              if (!display) return null;
+              const isFull = FULL_DISPLAY_FIELDS.has(field.name);
+              return (
+                <div key={field.name}>
+                  <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">
+                    {field.name}
+                  </span>
+                  <p className={`text-sm text-neutral-800 dark:text-neutral-200 mt-0.5 ${isFull ? "whitespace-pre-wrap font-mono text-xs leading-relaxed bg-neutral-50 dark:bg-neutral-800 rounded-lg p-3" : ""}`}>
+                    {display}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 pt-6 pb-24 animate-fade-in">
@@ -168,32 +276,36 @@ export default function FeaturePage() {
       ) : (
         <div className="flex flex-col gap-3 px-5">
           {items.map((item) => (
-            <div
+            <button
               key={item.id}
-              className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-4 transition-all"
+              onClick={() => setSelectedItem(item)}
+              className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-4 transition-all hover:shadow-md active:scale-[0.99] text-left w-full"
             >
-              <h3 className="text-[15px] font-semibold text-neutral-950 dark:text-neutral-50 mb-2">
-                {item[titleField] || "Untitled"}
-              </h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-[15px] font-semibold text-neutral-950 dark:text-neutral-50">
+                  {item[titleField] || "Untitled"}
+                </h3>
+                <ChevronRight className="w-4 h-4 text-neutral-300 dark:text-neutral-600 flex-shrink-0" />
+              </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 {template.schema.slice(1).map((field) => {
                   const val = item[field.name];
-                  if (val === null || val === undefined || val === "") return null;
+                  const display = formatValue(field.name, field.type, val);
+                  if (!display) return null;
+                  // Show preview (truncated) on cards — full view is in detail
                   return (
                     <div key={field.name} className="flex flex-col">
                       <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">
                         {field.name}
                       </span>
                       <span className="text-xs text-neutral-600 dark:text-neutral-300 truncate">
-                        {field.type === "number" && (field.name.toLowerCase().includes("price") || field.name.toLowerCase().includes("cost") || field.name.toLowerCase().includes("value"))
-                          ? `$${Number(val).toLocaleString()}`
-                          : String(val)}
+                        {display}
                       </span>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}

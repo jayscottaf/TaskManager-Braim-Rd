@@ -8,9 +8,10 @@ interface DynamicFormProps {
   schema: FieldDefinition[];
   onSubmit: (data: Record<string, string>) => Promise<void>;
   initialValues?: Record<string, string>;
+  submitLabel?: string;
 }
 
-export function DynamicForm({ schema, onSubmit, initialValues }: DynamicFormProps) {
+export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Save Entry" }: DynamicFormProps) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const prevInitial = useRef(initialValues);
@@ -77,6 +78,14 @@ export function DynamicForm({ schema, onSubmit, initialValues }: DynamicFormProp
               placeholder={field.placeholder || "https://..."}
               className={inputClass}
             />
+          ) : field.type === "textarea" ? (
+            <textarea
+              value={values[field.name] || ""}
+              onChange={(e) => set(field.name, e.target.value)}
+              placeholder={field.placeholder || ""}
+              rows={4}
+              className={`${inputClass} font-mono text-xs leading-relaxed resize-y`}
+            />
           ) : field.type === "number" ? (
             <input
               type="number"
@@ -105,7 +114,7 @@ export function DynamicForm({ schema, onSubmit, initialValues }: DynamicFormProp
         disabled={saving || !values[schema[0].name]?.trim()}
         className="w-full py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm disabled:opacity-50 hover:bg-blue-700 active:scale-[0.99] transition-all"
       >
-        {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Save Entry"}
+        {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : submitLabel}
       </button>
     </form>
   );

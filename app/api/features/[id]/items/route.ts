@@ -92,6 +92,7 @@ export async function POST(
       } else {
         switch (field.type) {
           case "text":
+          case "textarea":
             properties[field.name] = { rich_text: [{ text: { content: String(value) } }] };
             break;
           case "number":
@@ -120,5 +121,71 @@ export async function POST(
     console.error("Feature items POST error:", error);
     const msg = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: `Failed to create item: ${msg}` }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authError = checkAuth(request);
+  if (authError) return authError;
+
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    const { pageId, ...data } = body;
+
+    if (!pageId) return NextResponse.json({ error: "pageId required" }, { status: 400 });
+
+    const template = getTemplate(id);
+    if (!template) return NextResponse.json({ error: "Template not found" }, { status: 404 });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const properties: Record<string, any> = {};
+    for (let i = 0; i < template.schema.length; i++) {
+      const field = template.schema[i];
+      const value = data[field.name];
+      if (value === undefined) continue;
+
+      if (i === 0) {
+        properties[field.name] = { title: [{ text: { content: String(value || "") } }] };
+      } else if (value === null || value === "") {
+        // Clear the field
+        switch (field.type) {
+          case "text": case "textarea": properties[field.name] = { rich_text: [] }; break;
+          case "number": properties[field.name] = { number: null }; break;
+          case "select": properties[field.name] = { select: null }; break;
+          case "date": properties[field.name] = { date: null }; break;
+          case "url": properties[field.name] = { url: null }; break;
+        }
+      } else {
+        switch (field.type) {
+          case "text":
+          case "textarea":
+            properties[field.name] = { rich_text: [{ text: { content: String(value) } }] };
+            break;
+          case "number":
+            properties[field.name] = { number: Number(value) };
+            break;
+          case "select":
+            properties[field.name] = { select: { name: String(value) } };
+            break;
+          case "date":
+            properties[field.name] = { date: { start: String(value) } };
+            break;
+          case "url":
+            properties[field.name] = { url: String(value) };
+            break;
+        }
+      }
+    }
+
+    await notion.pages.update({ page_id: pageId, properties });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Feature items PATCH error:", error);
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: `Failed to update item: ${msg}` }, { status: 500 });
   }
 }

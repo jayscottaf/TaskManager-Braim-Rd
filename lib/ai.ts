@@ -157,17 +157,21 @@ Return a JSON object with these fields (use empty string "" if not visible):
 - "finish": one of "Flat", "Matte", "Eggshell", "Satin", "Semi-Gloss", "Gloss"
 - "interiorExterior": one of "Interior", "Exterior", "Interior/Exterior"
 - "size": one of "Sample", "Quart", "Gallon", "5 Gallon"
-- "base": the base type and number (e.g., "Pastel Base (2500)", "Ultra Pure White (1850)")
-- "colorantFormula": the colorant mix recipe. Format each colorant as "CODE COLOR OZ/48ths/96ths" separated by commas. Example: "AX Perm Yellow 0/24/0, D Thalo Green 0/42/0, I Brown Oxide 0/46/0"
-- "roomsUsed": any room labels written on the can (e.g., "Dining Rm", "Master Bed")
-- "store": the store name and location if visible (e.g., "Home Depot, Saratoga Springs")
+- "base": the base type and number (e.g., "Pastel Base (2500)", "Extra White")
+- "colorantFormula": the colorant mix recipe. Transcribe EXACTLY as shown on the label, preserving the brand's column format. Each colorant on its own line.
+  Examples:
+  Behr format:      "AX Perm Yellow  0 oz  24/48  0/96\nD Thalo Green  0 oz  42/48  0/96"
+  Sherwin-Williams:  "B1-Black  - oz  29/32  -/64  1/128\nG2-New Green  - oz  41/32  -/64  1/128"
+  Include the column headers if visible (e.g., "OZ 32 64 128" or "OZ 48 96"). The goal is for a paint store employee to be able to remix the exact color from this transcription.
+- "roomsUsed": any room labels written on the can (e.g., "Dining Rm", "Master Bed", "Office")
+- "store": the store name and location if visible (e.g., "Home Depot, Saratoga Springs", "Sherwin Williams")
 - "purchaseDate": date in YYYY-MM-DD format if visible (e.g., "2002-10-14")
 
 Look carefully at:
 1. The main label for brand, color name/code, finish, base
-2. The mixing sticker for colorant formula (OZ/48/96 columns)
-3. Any handwritten text on the lid (usually room names)
-4. Store info and date at bottom of mixing sticker
+2. The mixing sticker for colorant formula — transcribe all columns exactly as printed
+3. Any handwritten or stamped text on the can (usually room names like "OFFICE", "Dining Rm")
+4. Store info and date on the label
 
 Return ONLY the JSON object, no other text.`,
     imageBase64,

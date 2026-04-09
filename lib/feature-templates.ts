@@ -1,6 +1,6 @@
 export interface FieldDefinition {
   name: string;
-  type: "text" | "number" | "select" | "date" | "url";
+  type: "text" | "number" | "select" | "date" | "url" | "textarea";
   options?: string[];
   placeholder?: string;
 }
@@ -31,7 +31,7 @@ export const FEATURE_TEMPLATES: FeatureTemplate[] = [
       { name: "Interior/Exterior", type: "select", options: ["Interior", "Exterior", "Interior/Exterior"] },
       { name: "Size", type: "select", options: ["Sample", "Quart", "Gallon", "5 Gallon"] },
       { name: "Base", type: "text", placeholder: "e.g., Pastel Base (2500)" },
-      { name: "Colorant Formula", type: "text", placeholder: "e.g., AX Perm Yellow 0/24/0, D Thalo Green 0/42/0" },
+      { name: "Colorant Formula", type: "textarea", placeholder: "e.g., AX Perm Yellow 0/24/0\nD Thalo Green 0/42/0" },
       { name: "Rooms Used", type: "text", placeholder: "e.g., Living Room, Master Bedroom" },
       { name: "Store", type: "text", placeholder: "e.g., Home Depot, Sherwin-Williams" },
       { name: "Purchase Date", type: "date" },
