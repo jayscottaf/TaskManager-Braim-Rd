@@ -5,6 +5,45 @@ import { getTemplate } from "@/lib/feature-templates";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
+// Cache the parent page ID so we only create it once
+let featureParentPageId: string | null = null;
+
+async function getOrCreateParentPage(): Promise<string> {
+  if (featureParentPageId) return featureParentPageId;
+
+  // Search for existing "TaskTracker Features" page
+  const search = await notion.search({
+    query: "TaskTracker Features",
+    filter: { property: "object", value: "page" },
+  });
+
+  for (const result of search.results) {
+    if ("properties" in result) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const titleProp = (result as any).properties?.title;
+      if (titleProp?.type === "title") {
+        const text = titleProp.title?.map((t: { plain_text: string }) => t.plain_text).join("");
+        if (text === "TaskTracker Features") {
+          featureParentPageId = result.id;
+          return result.id;
+        }
+      }
+    }
+  }
+
+  // Create a new page in the workspace to hold feature databases
+  const page = await notion.pages.create({
+    parent: { workspace: true },
+    properties: {
+      title: { title: [{ text: { content: "TaskTracker Features" } }] },
+    },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+
+  featureParentPageId = page.id;
+  return page.id;
+}
+
 export async function POST(request: NextRequest) {
   const authError = checkAuth(request);
   if (authError) return authError;
@@ -33,7 +72,14 @@ export async function POST(request: NextRequest) {
           properties[field.name] = { rich_text: {} };
           break;
         case "number":
-          properties[field.name] = { number: { format: field.name.toLowerCase().includes("price") || field.name.toLowerCase().includes("cost") || field.name.toLowerCase().includes("value") ? "dollar" : "number" } };
+          properties[field.name] = {
+            number: {
+              format: field.name.toLowerCase().includes("price") ||
+                field.name.toLowerCase().includes("cost") ||
+                field.name.toLowerCase().includes("value")
+                ? "dollar" : "number",
+            },
+          };
           break;
         case "select":
           properties[field.name] = {
@@ -51,35 +97,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create the database as a child of the workspace
-    // We'll use the same parent page as the main database
-    const mainDbId = process.env.NOTION_DATABASE_ID!;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mainDb = (await notion.databases.retrieve({ database_id: mainDbId })) as any;
-    const parentPageId = mainDb.parent?.page_id || mainDb.parent?.workspace;
+    // Create database under the "TaskTracker Features" parent page
+    const parentId = await getOrCreateParentPage();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const createParams: any = {
-      parent: parentPageId
-        ? { page_id: parentPageId }
-        : { type: "page_id", page_id: mainDbId },
-      title: [{ text: { content: `TaskTracker: ${template.name}` } }],
+    const db = await notion.databases.create({
+      parent: { page_id: parentId },
+      title: [{ text: { content: template.name } }],
       properties,
-    };
-
-    // Try creating with page parent, fall back to creating inline
-    let db;
-    try {
-      db = await notion.databases.create(createParams);
-    } catch {
-      // If parent fails, try workspace-level
-      db = await notion.databases.create({
-        parent: { page_id: mainDbId },
-        title: [{ text: { content: `TaskTracker: ${template.name}` } }],
-        properties,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any);
-    }
+    });
 
     return NextResponse.json({
       databaseId: db.id,
