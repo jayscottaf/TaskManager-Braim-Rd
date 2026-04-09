@@ -74,6 +74,15 @@ export function PaintScanner({ onScanned }: PaintScannerProps) {
       if (uploadRes?.ok) {
         const uploadData = await uploadRes.json();
         photoUrl = uploadData.url;
+      } else if (uploadRes) {
+        // Show upload error but don't block — scan still works
+        try {
+          const errData = await uploadRes.json();
+          console.warn("Photo upload failed:", errData.error);
+          setError(`Photo didn't save: ${errData.error}. Label data was still captured.`);
+        } catch {
+          console.warn("Photo upload failed:", uploadRes.status);
+        }
       }
 
       const mapped = mapScanToFormData(result, photoUrl);
