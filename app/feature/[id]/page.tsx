@@ -7,6 +7,7 @@ import Link from "next/link";
 import { getTemplate } from "@/lib/feature-templates";
 import { getInstalledFeature } from "@/lib/feature-store";
 import { DynamicForm } from "@/components/dynamic-form";
+import { PaintScanner } from "@/components/paint-scanner";
 
 export default function FeaturePage() {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +18,7 @@ export default function FeaturePage() {
   const [items, setItems] = useState<Record<string, any>[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [scanData, setScanData] = useState<Record<string, string> | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   const loadItems = useCallback(async (databaseId: string) => {
@@ -72,6 +74,7 @@ export default function FeaturePage() {
         throw new Error(err.error);
       }
       setShowForm(false);
+      setScanData(undefined);
       loadItems(dbId);
     } catch (e: unknown) {
       setError((e as Error).message);
@@ -115,8 +118,15 @@ export default function FeaturePage() {
 
       {/* Add form */}
       {showForm && (
-        <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5">
-          <DynamicForm schema={template.schema} onSubmit={handleAdd} />
+        <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5 flex flex-col gap-4">
+          {id === "paint-tracker" && (
+            <PaintScanner
+              onScanned={(data) => {
+                setScanData(data);
+              }}
+            />
+          )}
+          <DynamicForm schema={template.schema} onSubmit={handleAdd} initialValues={scanData} />
         </div>
       )}
 

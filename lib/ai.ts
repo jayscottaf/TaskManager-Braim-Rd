@@ -129,6 +129,70 @@ Return ONLY the JSON array, no other text.`, 1024);
   return [];
 }
 
+export interface PaintLabelScan {
+  brand: string;
+  colorName: string;
+  colorCode: string;
+  finish: string;
+  interiorExterior: string;
+  size: string;
+  base: string;
+  colorantFormula: string;
+  roomsUsed: string;
+  store: string;
+  purchaseDate: string;
+}
+
+export async function classifyPaintLabel(
+  imageBase64: string,
+  mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif"
+): Promise<PaintLabelScan> {
+  const text = await chatWithImage(
+    `You are analyzing a photo of a paint can label. Extract as much information as possible.
+
+Return a JSON object with these fields (use empty string "" if not visible):
+- "brand": paint brand (e.g., "Behr", "Benjamin Moore", "Sherwin-Williams"). Look for brand logos or text like "Premium Plus" = Behr.
+- "colorName": the color name (e.g., "Sorus", "Simply White")
+- "colorCode": the color code (e.g., "3A60-3", "OC-117")
+- "finish": one of "Flat", "Matte", "Eggshell", "Satin", "Semi-Gloss", "Gloss"
+- "interiorExterior": one of "Interior", "Exterior", "Interior/Exterior"
+- "size": one of "Sample", "Quart", "Gallon", "5 Gallon"
+- "base": the base type and number (e.g., "Pastel Base (2500)", "Ultra Pure White (1850)")
+- "colorantFormula": the colorant mix recipe. Format each colorant as "CODE COLOR OZ/48ths/96ths" separated by commas. Example: "AX Perm Yellow 0/24/0, D Thalo Green 0/42/0, I Brown Oxide 0/46/0"
+- "roomsUsed": any room labels written on the can (e.g., "Dining Rm", "Master Bed")
+- "store": the store name and location if visible (e.g., "Home Depot, Saratoga Springs")
+- "purchaseDate": date in YYYY-MM-DD format if visible (e.g., "2002-10-14")
+
+Look carefully at:
+1. The main label for brand, color name/code, finish, base
+2. The mixing sticker for colorant formula (OZ/48/96 columns)
+3. Any handwritten text on the lid (usually room names)
+4. Store info and date at bottom of mixing sticker
+
+Return ONLY the JSON object, no other text.`,
+    imageBase64,
+    mediaType,
+    2048
+  );
+
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) return JSON.parse(match[0]);
+
+  return {
+    brand: "",
+    colorName: "",
+    colorCode: "",
+    finish: "",
+    interiorExterior: "",
+    size: "",
+    base: "",
+    colorantFormula: "",
+    roomsUsed: "",
+    store: "",
+    purchaseDate: "",
+  };
+}
+
 export async function classifyPhoto(
   imageBase64: string,
   mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif"

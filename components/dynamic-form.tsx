@@ -1,17 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import type { FieldDefinition } from "@/lib/feature-templates";
 
 interface DynamicFormProps {
   schema: FieldDefinition[];
   onSubmit: (data: Record<string, string>) => Promise<void>;
+  initialValues?: Record<string, string>;
 }
 
-export function DynamicForm({ schema, onSubmit }: DynamicFormProps) {
+export function DynamicForm({ schema, onSubmit, initialValues }: DynamicFormProps) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const prevInitial = useRef(initialValues);
+
+  // Merge in new initialValues when they change (e.g. from a scan)
+  useEffect(() => {
+    if (initialValues && initialValues !== prevInitial.current) {
+      prevInitial.current = initialValues;
+      setValues((prev) => ({ ...prev, ...initialValues }));
+    }
+  }, [initialValues]);
 
   function set(name: string, value: string) {
     setValues((prev) => ({ ...prev, [name]: value }));
