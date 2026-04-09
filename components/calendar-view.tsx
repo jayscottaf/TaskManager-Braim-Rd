@@ -13,16 +13,49 @@ import {
   isWithinInterval,
   addMonths,
   subMonths,
+  isPast,
 } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { Task, Priority } from "@/lib/types";
 import Link from "next/link";
 
-const DOT_COLORS: Record<Priority, string> = {
-  High: "bg-red-500",
-  Medium: "bg-yellow-500",
-  Low: "bg-green-500",
+const PRIORITY_COLORS: Record<Priority, { bg: string; border: string; text: string }> = {
+  High: { bg: "bg-red-50", border: "border-l-red-500", text: "text-red-900" },
+  Medium: { bg: "bg-yellow-50", border: "border-l-yellow-500", text: "text-yellow-900" },
+  Low: { bg: "bg-green-50", border: "border-l-green-500", text: "text-green-900" },
 };
+
+const DEFAULT_COLORS = { bg: "bg-gray-50", border: "border-l-gray-400", text: "text-gray-700" };
+
+const STATUS_STYLES: Record<string, string> = {
+  Completed: "line-through opacity-50",
+  "On Hold": "opacity-60 italic",
+};
+
+function TaskPill({ task }: { task: Task }) {
+  const colors = task.priority ? PRIORITY_COLORS[task.priority] : DEFAULT_COLORS;
+  const statusStyle = STATUS_STYLES[task.status] || "";
+
+  return (
+    <Link
+      href={`/task/${task.id}`}
+      className={`block px-1.5 py-0.5 rounded text-[11px] leading-tight truncate border-l-2 ${colors.bg} ${colors.border} ${colors.text} ${statusStyle} hover:brightness-95 transition-all`}
+    >
+      {task.task}
+    </Link>
+  );
+}
+
+function MobileTaskDot({ task }: { task: Task }) {
+  const dotColor = task.priority
+    ? { High: "bg-red-500", Medium: "bg-yellow-500", Low: "bg-green-500" }[task.priority]
+    : "bg-gray-400";
+  return (
+    <span
+      className={`w-1.5 h-1.5 rounded-full ${dotColor} ${task.status === "Completed" ? "opacity-40" : ""}`}
+    />
+  );
+}
 
 export function CalendarView({ tasks }: { tasks: Task[] }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -52,6 +85,8 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
     [selectedDate, tasks]
   );
 
+  const today = new Date();
+
   return (
     <div className="flex flex-col gap-3">
       {/* Month navigation */}
@@ -62,9 +97,19 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
         >
           <ChevronLeft className="w-5 h-5 text-gray-600" />
         </button>
-        <h2 className="font-semibold text-gray-900">
-          {format(currentMonth, "MMMM yyyy")}
-        </h2>
+        <div className="flex items-center gap-3">
+          <h2 className="font-semibold text-gray-900">
+            {format(currentMonth, "MMMM yyyy")}
+          </h2>
+          {!isSameMonth(currentMonth, today) && (
+            <button
+              onClick={() => setCurrentMonth(new Date())}
+              className="text-xs text-blue-600 font-medium px-2 py-0.5 rounded-full border border-blue-200 hover:bg-blue-50"
+            >
+              Today
+            </button>
+          )}
+        </div>
         <button
           onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
           className="p-2 rounded-full active:bg-gray-100"
@@ -82,13 +127,16 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
         ))}
       </div>
 
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7 px-2 gap-px">
+      {/* Calendar grid — desktop shows task pills, mobile shows dots */}
+      <div className="grid grid-cols-7 px-2 gap-px bg-gray-100 border border-gray-200 rounded-lg overflow-hidden">
         {days.map((day) => {
           const dayTasks = getTasksForDay(day);
           const isInMonth = isSameMonth(day, currentMonth);
-          const isToday = isSameDay(day, new Date());
+          const isToday = isSameDay(day, today);
           const isSelected = selectedDate && isSameDay(day, selectedDate);
+          const hasOverdue = dayTasks.some(
+            (t) => t.status !== "Completed" && isPast(new Date(t.dueDate!.start + "T00:00:00")) && t.dueDate!.start < format(today, "yyyy-MM-dd")
+          );
 
           return (
             <button
@@ -98,65 +146,105 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
                   selectedDate && isSameDay(day, selectedDate) ? null : day
                 )
               }
-              className={`flex flex-col items-center py-1.5 min-h-[44px] rounded-lg transition-colors ${
+              className={`flex flex-col min-h-[80px] sm:min-h-[100px] p-1 bg-white transition-colors text-left ${
                 isSelected
-                  ? "bg-gray-900 text-white"
-                  : isToday
-                    ? "bg-blue-50 text-blue-700"
-                    : isInMonth
-                      ? "text-gray-900 active:bg-gray-100"
-                      : "text-gray-300"
-              }`}
+                  ? "ring-2 ring-inset ring-blue-500 bg-blue-50/30"
+                  : ""
+              } ${!isInMonth ? "bg-gray-50/50" : ""}`}
             >
-              <span className="text-sm font-medium">{format(day, "d")}</span>
-              {dayTasks.length > 0 && (
-                <div className="flex gap-0.5 mt-0.5">
-                  {dayTasks.slice(0, 3).map((t, i) => (
-                    <span
-                      key={i}
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        isSelected
-                          ? "bg-white/70"
-                          : DOT_COLORS[t.priority || "Low"]
-                      }`}
-                    />
-                  ))}
-                </div>
-              )}
+              {/* Day number */}
+              <span
+                className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-0.5 ${
+                  isToday
+                    ? "bg-blue-600 text-white"
+                    : isInMonth
+                      ? "text-gray-700"
+                      : "text-gray-300"
+                }`}
+              >
+                {format(day, "d")}
+              </span>
+
+              {/* Desktop: task pills */}
+              <div className="hidden sm:flex flex-col gap-0.5 w-full overflow-hidden flex-1">
+                {dayTasks.slice(0, 3).map((t) => (
+                  <TaskPill key={t.id} task={t} />
+                ))}
+                {dayTasks.length > 3 && (
+                  <span className="text-[10px] text-gray-400 px-1">
+                    +{dayTasks.length - 3} more
+                  </span>
+                )}
+              </div>
+
+              {/* Mobile: dots */}
+              <div className="flex sm:hidden gap-0.5 flex-wrap justify-center mt-auto">
+                {dayTasks.slice(0, 4).map((t, i) => (
+                  <MobileTaskDot key={i} task={t} />
+                ))}
+              </div>
             </button>
           );
         })}
       </div>
 
-      {/* Selected day tasks */}
+      {/* Selected day detail panel */}
       {selectedDate && (
         <div className="px-4 mt-2">
           <h3 className="text-sm font-semibold text-gray-700 mb-2">
-            {format(selectedDate, "EEEE, MMM d")}
+            {format(selectedDate, "EEEE, MMMM d")}
+            {selectedTasks.length > 0 && (
+              <span className="text-gray-400 font-normal ml-2">
+                {selectedTasks.length} task{selectedTasks.length > 1 ? "s" : ""}
+              </span>
+            )}
           </h3>
           {selectedTasks.length === 0 ? (
             <p className="text-sm text-gray-400">No tasks on this day</p>
           ) : (
             <div className="flex flex-col gap-2">
-              {selectedTasks.map((t) => (
-                <Link
-                  key={t.id}
-                  href={`/task/${t.id}`}
-                  className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 p-2.5 active:bg-gray-50"
-                >
-                  {t.priority && (
-                    <span
-                      className={`w-2 h-2 rounded-full flex-shrink-0 ${DOT_COLORS[t.priority]}`}
-                    />
-                  )}
-                  <span className="text-sm font-medium text-gray-900 truncate">
-                    {t.task}
-                  </span>
-                  <span className="text-xs text-gray-400 ml-auto flex-shrink-0">
-                    {t.status}
-                  </span>
-                </Link>
-              ))}
+              {selectedTasks.map((t) => {
+                const colors = t.priority ? PRIORITY_COLORS[t.priority] : DEFAULT_COLORS;
+                const isOverdue =
+                  t.status !== "Completed" &&
+                  t.dueDate &&
+                  t.dueDate.start < format(today, "yyyy-MM-dd");
+
+                return (
+                  <Link
+                    key={t.id}
+                    href={`/task/${t.id}`}
+                    className={`flex items-start gap-3 rounded-lg border border-gray-200 p-3 active:bg-gray-50 border-l-4 ${colors.border}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium text-gray-900 ${t.status === "Completed" ? "line-through opacity-60" : ""}`}>
+                        {t.task}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                          t.status === "Completed"
+                            ? "bg-green-100 text-green-700"
+                            : t.status === "In Progress"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-gray-100 text-gray-600"
+                        }`}>
+                          {t.status}
+                        </span>
+                        {t.area && (
+                          <span className="text-xs text-gray-500">{t.area}</span>
+                        )}
+                        {isOverdue && (
+                          <span className="text-xs text-red-600 font-medium">Overdue</span>
+                        )}
+                        {t.costEstimate !== null && (
+                          <span className="text-xs text-gray-400">${t.costEstimate}</span>
+                        )}
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                  </Link>
+                );
+              })}
             </div>
           )}
         </div>
