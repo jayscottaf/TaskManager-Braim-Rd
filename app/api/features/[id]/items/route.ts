@@ -18,15 +18,47 @@ export async function GET(
     const dbId = request.nextUrl.searchParams.get("dbId");
     if (!dbId) return NextResponse.json({ error: "dbId required" }, { status: 400 });
 
+    const showArchived = request.nextUrl.searchParams.get("archived") === "true";
+
     const template = getTemplate(id);
     if (!template) return NextResponse.json({ error: "Template not found" }, { status: 404 });
 
-    const response = await notion.databases.query({ database_id: dbId });
+    // Filter by _Status if the property exists
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const queryOpts: any = { database_id: dbId };
+
+    if (!showArchived) {
+      // Show only active items (or items without a _Status field for backwards compat)
+      queryOpts.filter = {
+        or: [
+          { property: "_Status", select: { equals: "Active" } },
+          { property: "_Status", select: { is_empty: true } },
+        ],
+      };
+    }
+
+    let response;
+    try {
+      response = await notion.databases.query(queryOpts);
+    } catch {
+      // If filter fails (e.g. _Status property doesn't exist), query without filter
+      response = await notion.databases.query({ database_id: dbId });
+    }
+
     const items = response.results
       .filter((p): p is PageObjectResponse => "properties" in p)
       .map((page) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const fields: Record<string, any> = { id: page.id };
+
+        // Read _Status
+        const statusProp = page.properties["_Status"];
+        if (statusProp && statusProp.type === "select") {
+          fields._status = statusProp.select?.name ?? "Active";
+        } else {
+          fields._status = "Active";
+        }
+
         for (const field of template.schema) {
           const prop = page.properties[field.name];
           if (!prop) { fields[field.name] = null; continue; }
@@ -56,7 +88,10 @@ export async function GET(
         return fields;
       });
 
-    return NextResponse.json(items);
+    // When not showing archived, filter out any that slipped through
+    const filtered = showArchived ? items : items.filter((i) => i._status !== "Archived");
+
+    return NextResponse.json(filtered);
   } catch (error) {
     console.error("Feature items GET error:", error);
     return NextResponse.json({ error: "Failed to fetch items" }, { status: 500 });
@@ -111,10 +146,23 @@ export async function POST(
       }
     }
 
-    const page = await notion.pages.create({
-      parent: { database_id: dbId },
-      properties,
-    });
+    // Set _Status to Active (silently skip if property doesn't exist)
+    properties["_Status"] = { select: { name: "Active" } };
+
+    let page;
+    try {
+      page = await notion.pages.create({
+        parent: { database_id: dbId },
+        properties,
+      });
+    } catch {
+      // If _Status property doesn't exist, retry without it
+      delete properties["_Status"];
+      page = await notion.pages.create({
+        parent: { database_id: dbId },
+        properties,
+      });
+    }
 
     return NextResponse.json({ id: page.id }, { status: 201 });
   } catch (error) {
@@ -134,9 +182,20 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { pageId, ...data } = body;
+    const { pageId, _action, ...data } = body;
 
     if (!pageId) return NextResponse.json({ error: "pageId required" }, { status: 400 });
+
+    // Handle archive/restore actions
+    if (_action === "archive" || _action === "restore") {
+      await notion.pages.update({
+        page_id: pageId,
+        properties: {
+          "_Status": { select: { name: _action === "archive" ? "Archived" : "Active" } },
+        },
+      });
+      return NextResponse.json({ success: true });
+    }
 
     const template = getTemplate(id);
     if (!template) return NextResponse.json({ error: "Template not found" }, { status: 404 });
@@ -151,7 +210,6 @@ export async function PATCH(
       if (i === 0) {
         properties[field.name] = { title: [{ text: { content: String(value || "") } }] };
       } else if (value === null || value === "") {
-        // Clear the field
         switch (field.type) {
           case "text": case "textarea": properties[field.name] = { rich_text: [] }; break;
           case "number": properties[field.name] = { number: null }; break;
@@ -198,12 +256,12 @@ export async function DELETE(
   if (authError) return authError;
 
   try {
-    await params; // consume params
+    await params;
     const { pageId } = await request.json();
 
     if (!pageId) return NextResponse.json({ error: "pageId required" }, { status: 400 });
 
-    // Archive the page in Notion (moves to trash, recoverable for 30 days)
+    // Permanently archive in Notion (moves to trash, recoverable for 30 days)
     await notion.pages.update({
       page_id: pageId,
       archived: true,

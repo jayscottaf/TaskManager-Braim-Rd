@@ -73,6 +73,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Internal status field for archive support (not shown in forms)
+    properties["_Status"] = {
+      select: { options: [{ name: "Active" }, { name: "Archived" }] },
+    };
+
     const db = await notion.databases.create({
       parent: { page_id: FEATURES_PAGE_ID },
       title: [{ text: { content: template.name } }],

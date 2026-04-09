@@ -2,14 +2,13 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Plus, X, Loader2, Pencil, ChevronRight, Archive, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, X, Loader2, Pencil, ChevronRight, Archive, ArchiveRestore, Trash2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { getTemplate } from "@/lib/feature-templates";
 import { getInstalledFeature, saveInstalledFeature } from "@/lib/feature-store";
 import { DynamicForm } from "@/components/dynamic-form";
 import { PaintScanner } from "@/components/paint-scanner";
 
-// Fields that should never be truncated (shown in full, with whitespace preserved)
 const FULL_DISPLAY_FIELDS = new Set(["Colorant Formula"]);
 
 export default function FeaturePage() {
@@ -21,17 +20,19 @@ export default function FeaturePage() {
   const [items, setItems] = useState<Record<string, any>[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [scanData, setScanData] = useState<Record<string, string> | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [selectedItem, setSelectedItem] = useState<Record<string, any> | null>(null);
   const [editing, setEditing] = useState(false);
 
-  const loadItems = useCallback(async (databaseId: string) => {
+  const loadItems = useCallback(async (databaseId: string, archived = false) => {
     setLoading(true);
     try {
       const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-      const res = await fetch(`/api/features/${id}/items?dbId=${databaseId}`, {
+      const url = `/api/features/${id}/items?dbId=${databaseId}${archived ? "&archived=true" : ""}`;
+      const res = await fetch(url, {
         headers: secret ? { "x-app-secret": secret } : {},
       });
       if (res.ok) {
@@ -62,14 +63,10 @@ export default function FeaturePage() {
           }
         }
       } catch {
-        // Fall through to localStorage
+        // Fall through
       }
-
       const installed = getInstalledFeature(id);
-      if (!installed) {
-        router.push("/store");
-        return;
-      }
+      if (!installed) { router.push("/store"); return; }
       setDbId(installed.databaseId);
       loadItems(installed.databaseId);
     }
@@ -84,75 +81,84 @@ export default function FeaturePage() {
     );
   }
 
+  const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+  const authHeaders = (extra?: Record<string, string>) => ({
+    "Content-Type": "application/json",
+    ...(secret ? { "x-app-secret": secret } : {}),
+    ...extra,
+  });
+
   async function handleAdd(data: Record<string, string>) {
     if (!dbId) return;
     try {
-      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
       const res = await fetch(`/api/features/${id}/items`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(secret ? { "x-app-secret": secret } : {}),
-        },
+        method: "POST", headers: authHeaders(),
         body: JSON.stringify({ dbId, ...data }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error);
-      }
+      if (!res.ok) throw new Error((await res.json()).error);
       setShowForm(false);
       setScanData(undefined);
-      loadItems(dbId);
-    } catch (e: unknown) {
-      setError((e as Error).message);
-    }
+      loadItems(dbId, showArchived);
+    } catch (e: unknown) { setError((e as Error).message); }
   }
 
   async function handleEdit(data: Record<string, string>) {
     if (!dbId || !selectedItem) return;
     try {
-      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
       const res = await fetch(`/api/features/${id}/items`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(secret ? { "x-app-secret": secret } : {}),
-        },
+        method: "PATCH", headers: authHeaders(),
         body: JSON.stringify({ pageId: selectedItem.id, ...data }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error);
-      }
+      if (!res.ok) throw new Error((await res.json()).error);
       setEditing(false);
       setSelectedItem(null);
-      loadItems(dbId);
-    } catch (e: unknown) {
-      setError((e as Error).message);
-    }
+      loadItems(dbId, showArchived);
+    } catch (e: unknown) { setError((e as Error).message); }
+  }
+
+  async function handleArchive(pageId: string) {
+    if (!dbId) return;
+    try {
+      const res = await fetch(`/api/features/${id}/items`, {
+        method: "PATCH", headers: authHeaders(),
+        body: JSON.stringify({ pageId, _action: "archive" }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      setSelectedItem(null);
+      loadItems(dbId, showArchived);
+    } catch (e: unknown) { setError((e as Error).message); }
+  }
+
+  async function handleRestore(pageId: string) {
+    if (!dbId) return;
+    try {
+      const res = await fetch(`/api/features/${id}/items`, {
+        method: "PATCH", headers: authHeaders(),
+        body: JSON.stringify({ pageId, _action: "restore" }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      setSelectedItem(null);
+      loadItems(dbId, showArchived);
+    } catch (e: unknown) { setError((e as Error).message); }
   }
 
   async function handleDelete(pageId: string) {
     if (!dbId) return;
     try {
-      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
       const res = await fetch(`/api/features/${id}/items`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          ...(secret ? { "x-app-secret": secret } : {}),
-        },
+        method: "DELETE", headers: authHeaders(),
         body: JSON.stringify({ pageId }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error);
-      }
+      if (!res.ok) throw new Error((await res.json()).error);
       setSelectedItem(null);
-      loadItems(dbId);
-    } catch (e: unknown) {
-      setError((e as Error).message);
-    }
+      loadItems(dbId, showArchived);
+    } catch (e: unknown) { setError((e as Error).message); }
+  }
+
+  function toggleArchived() {
+    const next = !showArchived;
+    setShowArchived(next);
+    if (dbId) loadItems(dbId, next);
   }
 
   const titleField = template.schema[0].name;
@@ -167,6 +173,7 @@ export default function FeaturePage() {
 
   // Detail/edit overlay
   if (selectedItem && template) {
+    const isArchived = selectedItem._status === "Archived";
     const editInitial: Record<string, string> = {};
     for (const field of template.schema) {
       const v = selectedItem[field.name];
@@ -175,7 +182,6 @@ export default function FeaturePage() {
 
     return (
       <div className="flex flex-col gap-5 pt-6 pb-24 animate-fade-in">
-        {/* Header */}
         <div className="px-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -185,17 +191,24 @@ export default function FeaturePage() {
               >
                 <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
               </button>
-              <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">
-                {selectedItem[titleField] || "Untitled"}
-              </h1>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">
+                  {selectedItem[titleField] || "Untitled"}
+                </h1>
+                {isArchived && (
+                  <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Archived</span>
+                )}
+              </div>
             </div>
-            <button
-              onClick={() => setEditing(!editing)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.98] transition-all"
-            >
-              {editing ? <X className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
-              {editing ? "Cancel" : "Edit"}
-            </button>
+            {!isArchived && (
+              <button
+                onClick={() => setEditing(!editing)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.98] transition-all"
+              >
+                {editing ? <X className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+                {editing ? "Cancel" : "Edit"}
+              </button>
+            )}
           </div>
         </div>
 
@@ -246,19 +259,37 @@ export default function FeaturePage() {
               })}
             </div>
 
-            {/* Archive / Delete */}
-            <div className="flex gap-2 mt-2">
-              <button
-                onClick={() => {
-                  if (confirm("Delete this entry? It will be moved to Notion's trash (recoverable for 30 days).")) {
-                    handleDelete(selectedItem.id);
-                  }
-                }}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-950/30 active:scale-[0.98] transition-all"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete
-              </button>
+            {/* Archive / Restore / Delete */}
+            <div className="flex gap-2">
+              {isArchived ? (
+                <>
+                  <button
+                    onClick={() => handleRestore(selectedItem.id)}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400 text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-950/30 active:scale-[0.98] transition-all"
+                  >
+                    <ArchiveRestore className="w-4 h-4" />
+                    Restore
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm("Permanently delete? This moves it to Notion's trash (recoverable for 30 days).")) {
+                        handleDelete(selectedItem.id);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-950/30 active:scale-[0.98] transition-all"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => handleArchive(selectedItem.id)}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-amber-200 dark:border-amber-900 text-amber-600 dark:text-amber-400 text-sm font-medium hover:bg-amber-50 dark:hover:bg-amber-950/30 active:scale-[0.98] transition-all"
+                >
+                  <Archive className="w-4 h-4" />
+                  Archive
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -303,13 +334,22 @@ export default function FeaturePage() {
       {showForm && (
         <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5 flex flex-col gap-4">
           {id === "paint-tracker" && (
-            <PaintScanner
-              onScanned={(data) => {
-                setScanData(data);
-              }}
-            />
+            <PaintScanner onScanned={(data) => setScanData(data)} />
           )}
           <DynamicForm schema={template.schema} onSubmit={handleAdd} initialValues={scanData} />
+        </div>
+      )}
+
+      {/* Show Archived toggle */}
+      {!showForm && !loading && items.length > 0 && (
+        <div className="px-5">
+          <button
+            onClick={toggleArchived}
+            className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+          >
+            {showArchived ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            {showArchived ? "Hide archived" : "Show archived"}
+          </button>
         </div>
       )}
 
@@ -326,49 +366,58 @@ export default function FeaturePage() {
         </div>
       ) : (
         <div className="flex flex-col gap-3 px-5">
-          {items.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setSelectedItem(item)}
-              className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden transition-all hover:shadow-md active:scale-[0.99] text-left w-full"
-            >
-              {item["Photo"] && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={item["Photo"]}
-                  alt={item[titleField] || "Photo"}
-                  className="w-full h-36 object-cover"
-                />
-              )}
-              <div className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-[15px] font-semibold text-neutral-950 dark:text-neutral-50">
-                  {item[titleField] || "Untitled"}
-                </h3>
-                <ChevronRight className="w-4 h-4 text-neutral-300 dark:text-neutral-600 flex-shrink-0" />
-              </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                {template.schema.slice(1).map((field) => {
-                  const val = item[field.name];
-                  if (field.name === "Photo") return null;
-                  const display = formatValue(field.name, field.type, val);
-                  if (!display) return null;
-                  // Show preview (truncated) on cards — full view is in detail
-                  return (
-                    <div key={field.name} className="flex flex-col">
-                      <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">
-                        {field.name}
-                      </span>
-                      <span className="text-xs text-neutral-600 dark:text-neutral-300 truncate">
-                        {display}
-                      </span>
+          {items.map((item) => {
+            const isArchived = item._status === "Archived";
+            return (
+              <button
+                key={item.id}
+                onClick={() => setSelectedItem(item)}
+                className={`bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden transition-all hover:shadow-md active:scale-[0.99] text-left w-full ${isArchived ? "opacity-50" : ""}`}
+              >
+                {item["Photo"] && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item["Photo"]}
+                    alt={item[titleField] || "Photo"}
+                    className="w-full h-36 object-cover"
+                  />
+                )}
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-[15px] font-semibold text-neutral-950 dark:text-neutral-50">
+                        {item[titleField] || "Untitled"}
+                      </h3>
+                      {isArchived && (
+                        <span className="text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded">
+                          Archived
+                        </span>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-              </div>
-            </button>
-          ))}
+                    <ChevronRight className="w-4 h-4 text-neutral-300 dark:text-neutral-600 flex-shrink-0" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    {template.schema.slice(1).map((field) => {
+                      if (field.name === "Photo") return null;
+                      const val = item[field.name];
+                      const display = formatValue(field.name, field.type, val);
+                      if (!display) return null;
+                      return (
+                        <div key={field.name} className="flex flex-col">
+                          <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">
+                            {field.name}
+                          </span>
+                          <span className="text-xs text-neutral-600 dark:text-neutral-300 truncate">
+                            {display}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
