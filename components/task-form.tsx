@@ -160,16 +160,16 @@ export function TaskForm({ task, mode }: TaskFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-5 px-4 pb-8">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6 px-5 pb-8 animate-fade-in">
       {error && (
-        <div className="bg-red-50 text-red-700 text-sm px-3 py-2 rounded-lg">
+        <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-xl">
           {error}
         </div>
       )}
 
       {/* Task name */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Task name *
         </label>
         <input
@@ -178,26 +178,26 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g., Fix leaky kitchen faucet"
           required
-          className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-shadow"
         />
       </div>
 
       {/* Status (edit only) */}
       {mode === "edit" && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
             Status
           </label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2 bg-neutral-100 rounded-xl p-1">
             {STATUSES.map((s) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => setStatus(s)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                   status === s
-                    ? "bg-gray-900 text-white border-gray-900"
-                    : "bg-white text-gray-600 border-gray-200 active:bg-gray-100"
+                    ? "bg-white text-neutral-950 shadow-sm"
+                    : "text-neutral-500 hover:text-neutral-700"
                 }`}
               >
                 {s}
@@ -209,23 +209,23 @@ export function TaskForm({ task, mode }: TaskFormProps) {
 
       {/* Priority */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Priority
         </label>
-        <div className="flex gap-2">
+        <div className="flex gap-1 bg-neutral-100 rounded-xl p-1">
           {PRIORITIES.map((p) => (
             <button
               key={p}
               type="button"
               onClick={() => setPriority(priority === p ? "" : p)}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                 priority === p
                   ? p === "High"
-                    ? "bg-red-100 text-red-700 border-red-300"
+                    ? "bg-red-50 text-red-700 shadow-sm"
                     : p === "Medium"
-                      ? "bg-yellow-100 text-yellow-700 border-yellow-300"
-                      : "bg-green-100 text-green-700 border-green-300"
-                  : "bg-white text-gray-600 border-gray-200 active:bg-gray-100"
+                      ? "bg-amber-50 text-amber-700 shadow-sm"
+                      : "bg-emerald-50 text-emerald-700 shadow-sm"
+                  : "text-neutral-500 hover:text-neutral-700"
               }`}
             >
               {p}
@@ -236,13 +236,13 @@ export function TaskForm({ task, mode }: TaskFormProps) {
 
       {/* Area */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Area
         </label>
         <select
           value={area}
           onChange={(e) => setArea(e.target.value as Area | "")}
-          className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-base bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
         >
           <option value="">Select area...</option>
           {AREAS.map((a) => (
@@ -255,7 +255,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
 
       {/* Sub-location */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Sub-location
         </label>
         <input
@@ -263,13 +263,13 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           value={subLocation}
           onChange={(e) => setSubLocation(e.target.value)}
           placeholder="e.g., master bath, south fence"
-          className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-gray-900"
+          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
         />
       </div>
 
       {/* Type (multi-select chips) */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Type
         </label>
         <div className="flex flex-wrap gap-2">
@@ -278,10 +278,10 @@ export function TaskForm({ task, mode }: TaskFormProps) {
               key={t}
               type="button"
               onClick={() => toggleType(t)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                 types.includes(t)
-                  ? "bg-gray-900 text-white border-gray-900"
-                  : "bg-white text-gray-600 border-gray-200 active:bg-gray-100"
+                  ? "bg-neutral-950 text-white shadow-sm"
+                  : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
               }`}
             >
               {t}
@@ -292,13 +292,13 @@ export function TaskForm({ task, mode }: TaskFormProps) {
 
       {/* Frequency */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Frequency
         </label>
         <select
           value={frequency}
           onChange={(e) => setFrequency(e.target.value as Frequency | "")}
-          className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-base bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
         >
           <option value="">Select frequency...</option>
           {FREQUENCIES.map((f) => (
@@ -311,7 +311,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
 
       {/* Due Date */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Due Date
         </label>
         <div className="flex gap-2 items-center">
@@ -319,22 +319,22 @@ export function TaskForm({ task, mode }: TaskFormProps) {
             type="date"
             value={dueDateStart}
             onChange={(e) => setDueDateStart(e.target.value)}
-            className="flex-1 px-3 py-2.5 rounded-lg border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-gray-900"
+            className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
           />
-          <span className="text-gray-400 text-sm">to</span>
+          <span className="text-neutral-300 text-sm">to</span>
           <input
             type="date"
             value={dueDateEnd}
             onChange={(e) => setDueDateEnd(e.target.value)}
-            className="flex-1 px-3 py-2.5 rounded-lg border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-gray-900"
+            className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
           />
         </div>
-        <p className="text-xs text-gray-400 mt-1">End date is optional (for date ranges)</p>
+        <p className="text-xs text-neutral-400 mt-1.5">End date is optional (for date ranges)</p>
       </div>
 
       {/* Contractor/Vendor */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Contractor / Vendor
         </label>
         <input
@@ -342,13 +342,13 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           value={contractorVendor}
           onChange={(e) => setContractorVendor(e.target.value)}
           placeholder="e.g., Joe's Plumbing"
-          className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-gray-900"
+          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
         />
       </div>
 
       {/* Cost Estimate */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Cost Estimate ($)
         </label>
         <input
@@ -358,14 +358,14 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           placeholder="0"
           min="0"
           step="0.01"
-          className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-gray-900"
+          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
         />
       </div>
 
       {/* Actual Cost (edit only) */}
       {mode === "edit" && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
             Actual Cost ($)
           </label>
           <input
@@ -375,17 +375,17 @@ export function TaskForm({ task, mode }: TaskFormProps) {
             placeholder="0"
             min="0"
             step="0.01"
-            className="w-full px-3 py-2.5 rounded-lg border border-gray-300 text-base focus:outline-none focus:ring-2 focus:ring-gray-900"
+            className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
           />
         </div>
       )}
 
       {/* Action buttons */}
-      <div className="flex flex-col gap-2 pt-2">
+      <div className="flex flex-col gap-2.5 pt-2">
         <button
           type="submit"
           disabled={saving || !name.trim()}
-          className="w-full py-3 rounded-xl bg-gray-900 text-white font-medium text-base disabled:opacity-50 active:bg-gray-700 transition-colors"
+          className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold text-base disabled:opacity-50 hover:bg-blue-700 active:scale-[0.99] transition-all"
         >
           {saving ? "Saving..." : mode === "create" ? "Create Task" : "Save Changes"}
         </button>
@@ -395,7 +395,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
             type="button"
             onClick={handleMarkComplete}
             disabled={saving}
-            className="w-full py-3 rounded-xl bg-green-600 text-white font-medium text-base disabled:opacity-50 active:bg-green-700 transition-colors"
+            className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold text-base disabled:opacity-50 hover:bg-emerald-700 active:scale-[0.99] transition-all"
           >
             Mark Complete
           </button>
@@ -406,7 +406,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
             type="button"
             onClick={handleDelete}
             disabled={saving}
-            className="w-full py-3 rounded-xl bg-white text-red-600 font-medium text-base border border-red-200 disabled:opacity-50 active:bg-red-50 transition-colors"
+            className="w-full py-3 rounded-xl text-red-500 font-medium text-base disabled:opacity-50 hover:bg-red-50 active:bg-red-100 transition-all"
           >
             Delete Task
           </button>

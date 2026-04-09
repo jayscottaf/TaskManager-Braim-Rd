@@ -22,7 +22,7 @@ export function TaskFilters() {
   }
 
   return (
-    <div className="flex flex-col gap-2 px-4">
+    <div className="flex flex-col gap-2 px-5">
       {/* Status filter */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
         <FilterChip
@@ -49,7 +49,7 @@ export function TaskFilters() {
             onClick={() => setFilter("priority", activePriority === p ? "" : p)}
           />
         ))}
-        <span className="w-px bg-gray-200 mx-1 self-stretch" />
+        <span className="w-px bg-neutral-200 mx-1 self-stretch" />
         {AREAS.map((a) => (
           <FilterChip
             key={a}
@@ -75,10 +75,10 @@ function FilterChip({
   return (
     <button
       onClick={onClick}
-      className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium border transition-colors flex-shrink-0 ${
+      className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
         active
-          ? "bg-gray-900 text-white border-gray-900"
-          : "bg-white text-gray-600 border-gray-200 active:bg-gray-100"
+          ? "bg-neutral-950 text-white shadow-sm"
+          : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 active:bg-neutral-200"
       }`}
     >
       {label}

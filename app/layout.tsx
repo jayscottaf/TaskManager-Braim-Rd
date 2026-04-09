@@ -21,7 +21,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#111827",
+  themeColor: "#2563eb",
 };
 
 export default function RootLayout({
@@ -34,8 +34,9 @@ export default function RootLayout({
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
-      <body className="min-h-full bg-background text-foreground">
-        <main className="pb-20">{children}</main>
+      <body className="min-h-full bg-[#fafafa] text-neutral-950">
+        <div className="h-0.5 bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400" />
+        <main className="pb-20 max-w-2xl mx-auto">{children}</main>
         <BottomNav />
         <ToastProvider />
         <ServiceWorkerRegister />

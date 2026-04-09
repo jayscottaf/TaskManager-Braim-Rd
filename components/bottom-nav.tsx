@@ -15,7 +15,7 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 pb-[env(safe-area-inset-bottom)] z-50">
+    <nav className="fixed bottom-0 inset-x-0 bg-white/80 backdrop-blur-lg shadow-[0_-1px_3px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)] z-50">
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto">
         {NAV_ITEMS.map(({ href, label, icon: Icon, accent }) => {
           const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -25,7 +25,7 @@ export function BottomNav() {
               <Link
                 key={label}
                 href={href}
-                className="flex items-center justify-center w-12 h-12 rounded-full bg-gray-900 text-white shadow-lg -mt-4 active:scale-95 transition-transform"
+                className="flex items-center justify-center w-12 h-12 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/25 -mt-4 active:scale-95 transition-transform"
               >
                 <Icon className="w-6 h-6" />
               </Link>
@@ -36,11 +36,11 @@ export function BottomNav() {
             <Link
               key={label}
               href={href}
-              className={`flex flex-col items-center gap-0.5 min-w-[64px] py-1 ${
-                isActive ? "text-gray-900" : "text-gray-400"
+              className={`flex flex-col items-center gap-0.5 min-w-[64px] py-1 transition-colors ${
+                isActive ? "text-blue-600" : "text-neutral-400"
               }`}
             >
-              <Icon className="w-6 h-6" />
+              <Icon className="w-5 h-5" />
               <span className="text-[10px] font-medium">{label}</span>
             </Link>
           );

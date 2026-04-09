@@ -16,20 +16,20 @@ export function SeasonalBanner() {
   if (active.length === 0 && upcoming.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-2 px-4">
+    <div className="flex flex-col gap-2 px-5">
       {active.map((season) => {
         const Icon = getSeasonIcon(season.name);
         return (
           <div
             key={season.name}
-            className="flex items-center gap-2.5 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5"
+            className="flex items-center gap-3 bg-blue-50/50 border-l-2 border-l-blue-500 rounded-xl px-4 py-3"
           >
             <Icon className="w-4 h-4 text-blue-600 flex-shrink-0" />
             <div className="flex-1 min-w-0">
-              <span className="text-sm text-blue-800 font-semibold">
+              <span className="text-sm text-blue-900 font-semibold">
                 {season.name} season is active
               </span>
-              <p className="text-xs text-blue-600 truncate">
+              <p className="text-xs text-blue-600/70 truncate">
                 {season.taskSuggestions[0]}
               </p>
             </div>
@@ -41,10 +41,10 @@ export function SeasonalBanner() {
         return (
           <div
             key={season.name}
-            className="flex items-center gap-2.5 bg-purple-50 border border-purple-200 rounded-xl px-3 py-2.5"
+            className="flex items-center gap-3 bg-violet-50/50 border-l-2 border-l-violet-400 rounded-xl px-4 py-3"
           >
-            <Icon className="w-4 h-4 text-purple-600 flex-shrink-0" />
-            <span className="text-sm text-purple-700 font-medium">
+            <Icon className="w-4 h-4 text-violet-600 flex-shrink-0" />
+            <span className="text-sm text-violet-700 font-medium">
               {season.name} starts {season.startMonth}/{season.startDay}
             </span>
           </div>

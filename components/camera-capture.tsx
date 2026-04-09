@@ -68,10 +68,10 @@ export function CameraCapture({ onClassified }: CameraCaptureProps) {
           <img
             src={preview}
             alt="Captured"
-            className="w-full h-48 object-cover rounded-xl border border-gray-200"
+            className="w-full h-48 object-cover rounded-2xl shadow-sm"
           />
           {loading && (
-            <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center backdrop-blur-sm">
               <div className="flex items-center gap-2 text-white">
                 <Loader2 className="w-5 h-5 animate-spin" />
                 <span className="text-sm font-medium">Analyzing...</span>
@@ -81,7 +81,7 @@ export function CameraCapture({ onClassified }: CameraCaptureProps) {
           {!loading && (
             <button
               onClick={reset}
-              className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1"
+              className="absolute top-2 right-2 bg-black/50 text-white rounded-lg p-1.5 hover:bg-black/70 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -93,7 +93,7 @@ export function CameraCapture({ onClassified }: CameraCaptureProps) {
       ) : (
         <label
           htmlFor="camera-input"
-          className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 active:bg-gray-50 transition-colors cursor-pointer"
+          className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl border-2 border-dashed border-neutral-300 text-neutral-400 hover:border-blue-400 hover:bg-blue-50/30 hover:text-blue-600 active:bg-blue-50 transition-all cursor-pointer"
         >
           <Camera className="w-5 h-5" />
           <span className="text-sm font-medium">

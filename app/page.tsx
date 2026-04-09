@@ -28,13 +28,12 @@ async function TaskList({
   } catch (err: unknown) {
     const e = err as { code?: string; status?: number; message?: string };
     return (
-      <div className="mx-4 p-4 bg-red-50 border border-red-200 rounded-xl">
-        <p className="font-bold text-red-700">Notion API Error</p>
+      <div className="mx-5 p-5 bg-red-50 rounded-2xl">
+        <p className="font-semibold text-red-700">Notion API Error</p>
         <p className="text-sm text-red-600 mt-1">{e.message}</p>
-        {e.code && <p className="text-xs text-gray-500 mt-1">Code: {e.code}</p>}
-        <p className="text-xs text-gray-400 mt-2">
+        {e.code && <p className="text-xs text-neutral-500 mt-1">Code: {e.code}</p>}
+        <p className="text-xs text-neutral-400 mt-2">
           Check: NOTION_API_KEY and NOTION_DATABASE_ID in Vercel env vars.
-          Ensure the integration is connected to the database in Notion.
         </p>
       </div>
     );
@@ -42,9 +41,10 @@ async function TaskList({
 
   if (tasks.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-400">
-        <p className="text-lg font-medium">No tasks found</p>
-        <p className="text-sm mt-1">Try adjusting your filters</p>
+      <div className="text-center py-16 animate-fade-in">
+        <div className="text-4xl mb-3">🏡</div>
+        <p className="text-lg font-semibold text-neutral-950">All clear</p>
+        <p className="text-sm text-neutral-400 mt-1">No tasks match your filters</p>
       </div>
     );
   }
@@ -52,7 +52,7 @@ async function TaskList({
   return (
     <>
       <OverdueBanner tasks={tasks} />
-      <div className="flex flex-col gap-3 px-4">
+      <div className="flex flex-col gap-3 px-5 animate-fade-in">
         {tasks.map((task) => (
           <TaskCard key={task.id} task={task} />
         ))}
@@ -63,20 +63,20 @@ async function TaskList({
 
 function TaskListSkeleton() {
   return (
-    <div className="flex flex-col gap-3 px-4">
+    <div className="flex flex-col gap-3 px-5">
       {[1, 2, 3, 4, 5].map((i) => (
         <div
           key={i}
-          className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse"
+          className="bg-white rounded-2xl shadow-sm p-5 animate-pulse"
         >
-          <div className="flex gap-2 mb-2">
-            <div className="h-5 w-12 bg-gray-200 rounded-full" />
-            <div className="h-5 w-20 bg-gray-200 rounded-full" />
+          <div className="flex gap-2 mb-3">
+            <div className="h-5 w-14 bg-neutral-100 rounded-md" />
+            <div className="h-5 w-20 bg-neutral-100 rounded-md" />
           </div>
-          <div className="h-5 w-48 bg-gray-200 rounded" />
-          <div className="flex gap-3 mt-2">
-            <div className="h-4 w-20 bg-gray-100 rounded" />
-            <div className="h-4 w-16 bg-gray-100 rounded" />
+          <div className="h-5 w-48 bg-neutral-100 rounded-md" />
+          <div className="flex gap-3 mt-3">
+            <div className="h-4 w-20 bg-neutral-50 rounded-md" />
+            <div className="h-4 w-16 bg-neutral-50 rounded-md" />
           </div>
         </div>
       ))}
@@ -88,11 +88,11 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const params = await searchParams;
 
   return (
-    <div className="flex flex-col gap-4 pt-2 pb-4">
+    <div className="flex flex-col gap-6 pt-6 pb-6">
       {/* Header */}
-      <div className="px-4 pt-2">
-        <h1 className="text-2xl font-bold text-gray-900">Braim Rd</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Home Maintenance</p>
+      <div className="px-5">
+        <h1 className="text-3xl font-bold tracking-tight text-neutral-950">Braim Rd</h1>
+        <p className="text-sm text-neutral-400 mt-0.5">Home Maintenance Tracker</p>
       </div>
 
       {/* Seasonal Banner */}

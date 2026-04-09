@@ -27,17 +27,17 @@ export function OverdueBanner({ tasks }: { tasks: Task[] }) {
   if (overdue.length === 0 && dueSoon.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-2 px-4">
+    <div className="flex flex-col gap-2 px-5">
       {overdue.length > 0 && (
-        <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+        <div className="flex items-center gap-3 bg-red-50/50 border-l-2 border-l-red-500 rounded-xl px-4 py-3">
           <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
-          <span className="text-sm text-red-700 font-medium">
+          <span className="text-sm text-red-700 font-semibold">
             {overdue.length} overdue task{overdue.length > 1 ? "s" : ""}
           </span>
         </div>
       )}
       {dueSoon.length > 0 && (
-        <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">
+        <div className="flex items-center gap-3 bg-orange-50/50 border-l-2 border-l-orange-400 rounded-xl px-4 py-3">
           <Clock className="w-4 h-4 text-orange-600 flex-shrink-0" />
           <span className="text-sm text-orange-700 font-medium">
             {dueSoon.length} task{dueSoon.length > 1 ? "s" : ""} due in the next 3 days
