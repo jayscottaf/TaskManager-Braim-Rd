@@ -22,8 +22,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(suggestions);
   } catch (error) {
     console.error("AI suggest error:", error);
+    const msg = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "AI suggestions failed" },
+      { error: `AI suggestions failed: ${msg}` },
       { status: 500 }
     );
   }
