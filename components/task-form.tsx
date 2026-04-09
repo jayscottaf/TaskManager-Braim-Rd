@@ -116,7 +116,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
     setSaving(true);
     try {
       const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-      await fetch(`/api/tasks/${task.id}`, {
+      const res = await fetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -127,6 +127,11 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           dateCompleted: { start: new Date().toISOString().split("T")[0] },
         }),
       });
+      const data = await res.json();
+      if (data.nextOccurrence) {
+        const next = data.nextOccurrence;
+        alert(`Task completed! Next occurrence "${next.task}" created for ${next.dueDate?.start}.`);
+      }
       router.push("/");
       router.refresh();
     } catch {
