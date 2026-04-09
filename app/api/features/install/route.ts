@@ -4,45 +4,7 @@ import { checkAuth } from "@/lib/auth";
 import { getTemplate } from "@/lib/feature-templates";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
-
-// Cache the parent page ID so we only create it once
-let featureParentPageId: string | null = null;
-
-async function getOrCreateParentPage(): Promise<string> {
-  if (featureParentPageId) return featureParentPageId;
-
-  // Search for existing "TaskTracker Features" page
-  const search = await notion.search({
-    query: "TaskTracker Features",
-    filter: { property: "object", value: "page" },
-  });
-
-  for (const result of search.results) {
-    if ("properties" in result) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const titleProp = (result as any).properties?.title;
-      if (titleProp?.type === "title") {
-        const text = titleProp.title?.map((t: { plain_text: string }) => t.plain_text).join("");
-        if (text === "TaskTracker Features") {
-          featureParentPageId = result.id;
-          return result.id;
-        }
-      }
-    }
-  }
-
-  // Create a new page in the workspace to hold feature databases
-  const page = await notion.pages.create({
-    parent: { workspace: true },
-    properties: {
-      title: { title: [{ text: { content: "TaskTracker Features" } }] },
-    },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any);
-
-  featureParentPageId = page.id;
-  return page.id;
-}
+const FEATURES_PAGE_ID = process.env.NOTION_FEATURES_PAGE_ID || "33d70ce0-a955-81b6-86ff-d14e049a6b9c";
 
 export async function POST(request: NextRequest) {
   const authError = checkAuth(request);
@@ -98,10 +60,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Create database under the "TaskTracker Features" parent page
-    const parentId = await getOrCreateParentPage();
-
     const db = await notion.databases.create({
-      parent: { page_id: parentId },
+      parent: { page_id: FEATURES_PAGE_ID },
       title: [{ text: { content: template.name } }],
       properties,
     });
