@@ -1,8 +1,8 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import type { Task, TaskType, Area, Priority } from "./types";
 import { buildSeasonalContext } from "./seasonal";
 
-const anthropic = new Anthropic();
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "placeholder" });
 
 export interface PrioritizedTask {
   id: string;
@@ -26,6 +26,40 @@ export interface PhotoClassification {
   description: string;
 }
 
+async function chat(prompt: string, maxTokens = 2048): Promise<string> {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    max_tokens: maxTokens,
+    messages: [{ role: "user", content: prompt }],
+  });
+  return response.choices[0]?.message?.content ?? "";
+}
+
+async function chatWithImage(
+  prompt: string,
+  imageBase64: string,
+  mediaType: string,
+  maxTokens = 1024
+): Promise<string> {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    max_tokens: maxTokens,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image_url",
+            image_url: { url: `data:${mediaType};base64,${imageBase64}` },
+          },
+          { type: "text", text: prompt },
+        ],
+      },
+    ],
+  });
+  return response.choices[0]?.message?.content ?? "";
+}
+
 export async function prioritizeTasks(
   tasks: Task[]
 ): Promise<PrioritizedTask[]> {
@@ -40,13 +74,7 @@ export async function prioritizeTasks(
     )
     .join("\n");
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 2048,
-    messages: [
-      {
-        role: "user",
-        content: `You are a home maintenance prioritization expert. Reorder these tasks by urgency.
+  const text = await chat(`You are a home maintenance prioritization expert. Reorder these tasks by urgency.
 
 ${seasonalContext}
 
@@ -60,13 +88,8 @@ Consider:
 4. Frequency — flag tasks past their recurring schedule
 5. Cost efficiency (cheaper preventive tasks before expensive reactive ones)
 
-Return a JSON array of objects with "id" and "reason" (1 short sentence), ordered from most to least urgent. Only include active (non-completed) tasks. Return ONLY the JSON array, no other text.`,
-      },
-    ],
-  });
+Return a JSON array of objects with "id" and "reason" (1 short sentence), ordered from most to least urgent. Only include active (non-completed) tasks. Return ONLY the JSON array, no other text.`);
 
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "";
   try {
     const match = text.match(/\[[\s\S]*\]/);
     if (match) return JSON.parse(match[0]);
@@ -82,13 +105,7 @@ export async function suggestTasks(
   const seasonalContext = buildSeasonalContext();
   const existingNames = existingTasks.map((t) => t.task).join(", ");
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1024,
-    messages: [
-      {
-        role: "user",
-        content: `You are a home maintenance advisor for a property in Saratoga Springs, NY.
+  const text = await chat(`You are a home maintenance advisor for a property in Saratoga Springs, NY.
 
 ${seasonalContext}
 
@@ -101,13 +118,8 @@ Suggest 3-5 maintenance tasks that are NOT already in the list but should be, ba
 - "priority": High, Medium, or Low
 - "reason": why this task is timely (1 sentence)
 
-Return ONLY the JSON array, no other text.`,
-      },
-    ],
-  });
+Return ONLY the JSON array, no other text.`, 1024);
 
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "";
   try {
     const match = text.match(/\[[\s\S]*\]/);
     if (match) return JSON.parse(match[0]);
@@ -121,20 +133,8 @@ export async function classifyPhoto(
   imageBase64: string,
   mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif"
 ): Promise<PhotoClassification> {
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1024,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: { type: "base64", media_type: mediaType, data: imageBase64 },
-          },
-          {
-            type: "text",
-            text: `You are analyzing a photo of a home maintenance issue at a residential property in Saratoga Springs, NY.
+  const text = await chatWithImage(
+    `You are analyzing a photo of a home maintenance issue at a residential property in Saratoga Springs, NY.
 
 Classify this issue and return a JSON object with:
 - "task": suggested task name (concise, e.g., "Fix leaky kitchen faucet")
@@ -145,14 +145,10 @@ Classify this issue and return a JSON object with:
 - "description": brief description of the issue (1-2 sentences)
 
 Return ONLY the JSON object, no other text.`,
-          },
-        ],
-      },
-    ],
-  });
+    imageBase64,
+    mediaType
+  );
 
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "";
   const match = text.match(/\{[\s\S]*\}/);
   if (match) return JSON.parse(match[0]);
 
