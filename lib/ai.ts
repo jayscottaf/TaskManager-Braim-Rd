@@ -158,11 +158,13 @@ Return a JSON object with these fields (use empty string "" if not visible):
 - "interiorExterior": one of "Interior", "Exterior", "Interior/Exterior"
 - "size": one of "Sample", "Quart", "Gallon", "5 Gallon"
 - "base": the base type and number (e.g., "Pastel Base (2500)", "Extra White")
-- "colorantFormula": the colorant mix recipe. Transcribe EXACTLY as shown on the label, preserving the brand's column format. Each colorant on its own line.
+- "colorantFormula": the colorant mix recipe. This is CRITICAL — a paint store needs this to remix the color.
+  ALWAYS start with the column header row (e.g., "BAC COLORANT  OZ  32  64  128" or "COLORANT  OZ  48  96").
+  Then each colorant on its own line, exactly as printed.
   Examples:
-  Behr format:      "AX Perm Yellow  0 oz  24/48  0/96\nD Thalo Green  0 oz  42/48  0/96"
-  Sherwin-Williams:  "B1-Black  - oz  29/32  -/64  1/128\nG2-New Green  - oz  41/32  -/64  1/128"
-  Include the column headers if visible (e.g., "OZ 32 64 128" or "OZ 48 96"). The goal is for a paint store employee to be able to remix the exact color from this transcription.
+  Sherwin-Williams: "BAC COLORANT  OZ  32  64  128\nB1-Black  -  29  -  1\nG2-New Green  -  41  -  1\nY3-Deep Gold  -  26  1  1"
+  Behr: "COLORANT  OZ  48  96\nAX Perm Yellow  0  24  0\nD Thalo Green  0  42  0\nI Brown Oxide  0  46  0"
+  The header row tells the store which measurement columns are used. Without it the numbers are meaningless. Transcribe ALL rows including the header.
 - "roomsUsed": any room labels written on the can (e.g., "Dining Rm", "Master Bed", "Office")
 - "store": the store name and location if visible (e.g., "Home Depot, Saratoga Springs", "Sherwin Williams")
 - "purchaseDate": date in YYYY-MM-DD format if visible (e.g., "2002-10-14")

@@ -2,42 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { Client } from "@notionhq/client";
 import { checkAuth } from "@/lib/auth";
 import { getTemplate } from "@/lib/feature-templates";
-import type { DatabaseObjectResponse } from "@notionhq/client/build/src/api-endpoints";
+import { findBestDatabase, restoreDatabase, FEATURES_PAGE_ID } from "@/lib/feature-db";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
-const FEATURES_PAGE_ID = process.env.NOTION_FEATURES_PAGE_ID || "33d70ce0-a955-81b6-86ff-d14e049a6b9c";
-
-async function findExistingDatabase(templateName: string): Promise<{ id: string; archived: boolean } | null> {
-  const children = await notion.blocks.children.list({
-    block_id: FEATURES_PAGE_ID,
-    page_size: 100,
-  });
-
-  let best: { id: string; archived: boolean; createdTime: string } | null = null;
-
-  for (const block of children.results) {
-    if (!("type" in block) || block.type !== "child_database") continue;
-    try {
-      const db = await notion.databases.retrieve({
-        database_id: block.id,
-      }) as DatabaseObjectResponse;
-
-      const title = db.title.map((t) => t.plain_text).join("");
-      if (title !== templateName) continue;
-
-      // Prefer non-archived, then most recent
-      if (!best ||
-          (!db.archived && best.archived) ||
-          (db.archived === best.archived && db.created_time > best.createdTime)) {
-        best = { id: db.id, archived: db.archived, createdTime: db.created_time };
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return best ? { id: best.id, archived: best.archived } : null;
-}
 
 export async function POST(request: NextRequest) {
   const authError = checkAuth(request);
@@ -51,16 +18,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Template not found" }, { status: 404 });
     }
 
-    // First, check if a database already exists for this feature
-    const existing = await findExistingDatabase(template.name);
+    // First, check if a database already exists (prefer ones with data)
+    const existing = await findBestDatabase(template.name);
 
     if (existing) {
-      // Restore if archived
       if (existing.archived) {
-        await notion.databases.update({
-          database_id: existing.id,
-          archived: false,
-        });
+        await restoreDatabase(existing.id);
       }
 
       return NextResponse.json({
