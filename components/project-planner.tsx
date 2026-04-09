@@ -4,22 +4,27 @@ import { useState, useRef } from "react";
 import { Camera, ImagePlus, Loader2, Sparkles, X } from "lucide-react";
 import type { WishListPlan } from "@/lib/ai";
 
-const MAX_SIZE = 1024;
-const JPEG_QUALITY = 0.7;
+const AI_MAX_SIZE = 1024;   // smaller for AI analysis
+const STORAGE_MAX_SIZE = 2048; // larger for display quality
+const AI_QUALITY = 0.7;
+const STORAGE_QUALITY = 0.85;
 
-/** Resize an image file client-side to stay under Vercel's 4.5MB body limit */
-function resizeImage(file: File): Promise<File> {
+/** Resize an image file client-side */
+function resizeImage(file: File, maxSize: number, quality: number): Promise<File> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       let { width, height } = img;
-      if (width <= MAX_SIZE && height <= MAX_SIZE) { resolve(file); return; }
+      if (width <= maxSize && height <= maxSize && file.size < 4_000_000) {
+        resolve(file);
+        return;
+      }
       if (width > height) {
-        height = Math.round((height * MAX_SIZE) / width);
-        width = MAX_SIZE;
+        height = Math.round((height * maxSize) / width);
+        width = maxSize;
       } else {
-        width = Math.round((width * MAX_SIZE) / height);
-        height = MAX_SIZE;
+        width = Math.round((width * maxSize) / height);
+        height = maxSize;
       }
       const canvas = document.createElement("canvas");
       canvas.width = width;
@@ -28,7 +33,7 @@ function resizeImage(file: File): Promise<File> {
       canvas.toBlob(
         (blob) => resolve(blob ? new File([blob], file.name, { type: "image/jpeg" }) : file),
         "image/jpeg",
-        JPEG_QUALITY
+        quality
       );
     };
     img.onerror = () => resolve(file);
@@ -37,8 +42,10 @@ function resizeImage(file: File): Promise<File> {
 }
 
 async function uploadFile(file: File, secret: string): Promise<string | null> {
+  // Resize for storage to stay under Vercel's 4.5MB body limit
+  const resized = await resizeImage(file, STORAGE_MAX_SIZE, STORAGE_QUALITY);
   const form = new FormData();
-  form.append("image", file);
+  form.append("image", resized);
   const headers: Record<string, string> = secret ? { "x-app-secret": secret } : {};
   try {
     const res = await fetch("/api/upload", { method: "POST", headers, body: form });
@@ -82,7 +89,7 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
       const headers: Record<string, string> = secret ? { "x-app-secret": secret } : {};
 
       // Send first photo (resized) to AI for analysis
-      const resizedFile = files[0] ? await resizeImage(files[0]) : null;
+      const resizedFile = files[0] ? await resizeImage(files[0], AI_MAX_SIZE, AI_QUALITY) : null;
       const planForm = new FormData();
       planForm.append("description", description);
       if (resizedFile) planForm.append("image", resizedFile);
