@@ -4,6 +4,53 @@ import { useState, useRef } from "react";
 import { Camera, Loader2, Sparkles, X } from "lucide-react";
 import type { WishListPlan } from "@/lib/ai";
 
+const MAX_SIZE = 1024; // resize images to max 1024px on longest side
+const JPEG_QUALITY = 0.7;
+
+/** Resize an image file client-side to stay under Vercel's 4.5MB body limit */
+function resizeImage(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+
+      // Skip resize if already small enough
+      if (width <= MAX_SIZE && height <= MAX_SIZE) {
+        resolve(file);
+        return;
+      }
+
+      if (width > height) {
+        height = Math.round((height * MAX_SIZE) / width);
+        width = MAX_SIZE;
+      } else {
+        width = Math.round((width * MAX_SIZE) / height);
+        height = MAX_SIZE;
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(new File([blob], file.name, { type: "image/jpeg" }));
+          } else {
+            resolve(file);
+          }
+        },
+        "image/jpeg",
+        JPEG_QUALITY
+      );
+    };
+    img.onerror = () => resolve(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 interface ProjectPlannerProps {
   onPlanned: (plan: WishListPlan, photoUrl?: string) => void;
 }
@@ -38,16 +85,19 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
       const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
       const headers: Record<string, string> = secret ? { "x-app-secret": secret } : {};
 
+      // Resize image before sending to avoid 413
+      const resizedFile = file ? await resizeImage(file) : null;
+
       // AI plan + photo upload in parallel
       const planForm = new FormData();
       planForm.append("description", description);
-      if (file) planForm.append("image", file);
+      if (resizedFile) planForm.append("image", resizedFile);
 
       const promises: Promise<Response | null>[] = [
         fetch("/api/ai/plan-project", { method: "POST", headers, body: planForm }),
       ];
 
-      // Upload photo if present
+      // Upload original photo (full quality) for storage
       if (file) {
         const uploadForm = new FormData();
         uploadForm.append("image", file);
