@@ -282,7 +282,13 @@ Return ONLY the JSON object, no other text.`;
   }
 
   const match = text.match(/\{[\s\S]*\}/);
-  if (match) return JSON.parse(match[0]);
+  if (match) {
+    const parsed = JSON.parse(match[0]);
+    // Normalize — GPT sometimes returns plan as an array instead of a string
+    if (Array.isArray(parsed.plan)) parsed.plan = parsed.plan.join("\n");
+    if (Array.isArray(parsed.description)) parsed.description = parsed.description.join(" ");
+    return parsed;
+  }
 
   return {
     project: description.slice(0, 60),

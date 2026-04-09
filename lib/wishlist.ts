@@ -163,6 +163,17 @@ export async function getOrCreateDatabase(): Promise<string> {
   return db.id;
 }
 
+/** Notion rich_text blocks have a 2000-char limit. Split long strings into chunks. */
+function richTextChunks(text: string): { text: { content: string } }[] {
+  const MAX = 2000;
+  if (text.length <= MAX) return [{ text: { content: text } }];
+  const chunks: { text: { content: string } }[] = [];
+  for (let i = 0; i < text.length; i += MAX) {
+    chunks.push({ text: { content: text.slice(i, i + MAX) } });
+  }
+  return chunks;
+}
+
 function parsePhotos(raw: string): string[] {
   if (!raw) return [];
   try { return JSON.parse(raw); } catch { /* ignore */ }
@@ -257,8 +268,8 @@ export async function createWishListItem(input: CreateWishListInput): Promise<st
     _Status: { select: { name: "Active" } },
   };
 
-  if (input.description) properties.Description = { rich_text: [{ text: { content: input.description } }] };
-  if (input.aiPlan) properties["AI Plan"] = { rich_text: [{ text: { content: input.aiPlan } }] };
+  if (input.description) properties.Description = { rich_text: richTextChunks(input.description) };
+  if (input.aiPlan) properties["AI Plan"] = { rich_text: richTextChunks(input.aiPlan) };
   if (input.estimatedCost != null) properties["Estimated Cost"] = { number: input.estimatedCost };
   if (input.valueAdd != null) properties["Value Add"] = { number: input.valueAdd };
   if (input.roi != null) properties.ROI = { number: input.roi / 100 }; // Notion percent format is 0-1
@@ -309,8 +320,8 @@ export async function updateWishListItem(
   const properties: Record<string, any> = {};
 
   if (updates.project !== undefined) properties.Project = { title: [{ text: { content: updates.project } }] };
-  if (updates.description !== undefined) properties.Description = { rich_text: updates.description ? [{ text: { content: updates.description } }] : [] };
-  if (updates.aiPlan !== undefined) properties["AI Plan"] = { rich_text: updates.aiPlan ? [{ text: { content: updates.aiPlan } }] : [] };
+  if (updates.description !== undefined) properties.Description = { rich_text: updates.description ? richTextChunks(updates.description) : [] };
+  if (updates.aiPlan !== undefined) properties["AI Plan"] = { rich_text: updates.aiPlan ? richTextChunks(updates.aiPlan) : [] };
   if (updates.estimatedCost !== undefined) properties["Estimated Cost"] = { number: updates.estimatedCost ?? null };
   if (updates.valueAdd !== undefined) properties["Value Add"] = { number: updates.valueAdd ?? null };
   if (updates.roi !== undefined) properties.ROI = { number: updates.roi != null ? updates.roi / 100 : null };

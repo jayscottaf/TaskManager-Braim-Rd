@@ -186,7 +186,20 @@ export default function WishListPage() {
   const inputClass = "w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow";
 
   function set(key: string, val: string) {
-    setFormData((prev) => ({ ...prev, [key]: val }));
+    setFormData((prev) => {
+      const next = { ...prev, [key]: val };
+      // Auto-recalculate ROI when cost or value add changes
+      if (key === "estimatedCost" || key === "valueAdd") {
+        const cost = Number(key === "estimatedCost" ? val : next.estimatedCost) || 0;
+        const value = Number(key === "valueAdd" ? val : next.valueAdd) || 0;
+        if (cost > 0) {
+          const roi = Math.round((value / cost) * 100);
+          next.roi = String(roi);
+          next.roiRating = roi > 100 ? "High ROI" : roi >= 50 ? "Good" : roi > 0 ? "Low" : "Lifestyle";
+        }
+      }
+      return next;
+    });
   }
 
   function renderForm(submitLabel: string, onSubmit: () => void) {
