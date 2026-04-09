@@ -65,6 +65,7 @@ function getNumber(page: PageObjectResponse, name: string): number | null {
 
 function getText(page: PageObjectResponse, name: string): string | null {
   const prop = page.properties[name];
+  if (!prop) return null;
   if (prop.type === "rich_text")
     return prop.rich_text.map((t) => t.plain_text).join("") || null;
   return null;
