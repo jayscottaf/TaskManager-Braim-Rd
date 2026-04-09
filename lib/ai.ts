@@ -231,3 +231,70 @@ Return ONLY the JSON object, no other text.`,
     description: "Could not classify the image.",
   };
 }
+
+// --- Wish List Project Planner ---
+
+export interface WishListPlan {
+  project: string;
+  description: string;
+  plan: string;
+  estimatedCost: number;
+  valueAdd: number;
+  roi: number;
+  roiRating: string;
+  category: string;
+  priority: string;
+  timeline: string;
+  bestSeason: string;
+}
+
+export async function planWishListProject(
+  description: string,
+  imageBase64?: string,
+  mediaType?: string
+): Promise<WishListPlan> {
+  const prompt = `You are a home improvement project planner for a residential property in Saratoga Springs, NY (typical 3BR home, ~$350K market value).
+
+The homeowner wants to plan a future project. Based on their description${imageBase64 ? " and the attached photo" : ""}, create a detailed project plan.
+
+HOMEOWNER'S DESCRIPTION: "${description}"
+
+Return a JSON object with:
+- "project": Clean, concise project name (e.g., "Belgium Block Driveway Border")
+- "description": 1-2 sentence summary of the project
+- "plan": Detailed step-by-step plan. Each step on its own line, numbered. Include materials needed, key considerations, and approximate timeline for each step. This should be detailed enough that a homeowner could use it to get contractor quotes.
+- "estimatedCost": Realistic total cost in USD for the Saratoga Springs, NY area. Include both materials and labor. Use current 2024-2026 pricing.
+- "valueAdd": Estimated increase in home resale value from this project. Be realistic — not all projects add value equal to their cost.
+- "roi": ROI percentage calculated as (valueAdd / estimatedCost) × 100, rounded to nearest integer
+- "roiRating": One of "High ROI" (roi > 100), "Good" (roi 50-100), "Low" (roi < 50), or "Lifestyle" (project primarily improves quality of life, not resale value — e.g., hot tub, game room)
+- "category": One of "Landscaping", "Driveway", "Interior", "Exterior", "Roofing", "Plumbing", "Electrical", "General"
+- "priority": "High", "Medium", or "Low" based on impact and urgency
+- "timeline": One of "This Year", "Next Year", "2+ Years", "Someday"
+- "bestSeason": One of "Spring", "Summer", "Fall", "Winter", "Any" — recommend the best time to do this project considering weather, contractor availability, and cost. Add a brief reason in parentheses, e.g., "Fall (lower contractor demand, cooler weather for outdoor work)"
+
+Return ONLY the JSON object, no other text.`;
+
+  let text: string;
+  if (imageBase64 && mediaType) {
+    text = await chatWithImage(prompt, imageBase64, mediaType, 4096);
+  } else {
+    text = await chat(prompt, 4096);
+  }
+
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) return JSON.parse(match[0]);
+
+  return {
+    project: description.slice(0, 60),
+    description: description,
+    plan: "Could not generate a plan. Please try again with more detail.",
+    estimatedCost: 0,
+    valueAdd: 0,
+    roi: 0,
+    roiRating: "Low",
+    category: "General",
+    priority: "Medium",
+    timeline: "Someday",
+    bestSeason: "Any",
+  };
+}
