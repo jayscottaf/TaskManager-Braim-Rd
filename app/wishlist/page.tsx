@@ -69,7 +69,7 @@ export default function WishListPage() {
     });
   }
 
-  function handlePlanned(plan: WishListPlan, photoUrl?: string) {
+  function handlePlanned(plan: WishListPlan, photoUrls: string[]) {
     setFormData({
       project: plan.project,
       description: plan.description,
@@ -82,7 +82,7 @@ export default function WishListPage() {
       priority: plan.priority,
       timeline: plan.timeline,
       bestSeason: plan.bestSeason,
-      ...(photoUrl ? { photo: photoUrl } : {}),
+      ...(photoUrls.length > 0 ? { photos: JSON.stringify(photoUrls) } : {}),
     });
   }
 
@@ -103,7 +103,7 @@ export default function WishListPage() {
         priority: formData.priority || undefined,
         timeline: formData.timeline || undefined,
         bestSeason: formData.bestSeason || undefined,
-        photo: formData.photo || undefined,
+        photos: formData.photos ? JSON.parse(formData.photos) : undefined,
         notes: formData.notes || undefined,
       };
       const res = await fetch("/api/wishlist", {
@@ -137,6 +137,7 @@ export default function WishListPage() {
         priority: formData.priority || null,
         timeline: formData.timeline || null,
         bestSeason: formData.bestSeason || null,
+        photos: formData.photos ? JSON.parse(formData.photos) : [],
         notes: formData.notes || "",
       };
       const res = await fetch(`/api/wishlist/${selectedItem.id}`, {
@@ -325,6 +326,7 @@ export default function WishListPage() {
                 priority: selectedItem.priority || "",
                 timeline: selectedItem.timeline || "",
                 bestSeason: selectedItem.bestSeason || "",
+                photos: selectedItem.photos.length > 0 ? JSON.stringify(selectedItem.photos) : "",
                 notes: selectedItem.notes || "",
               });
               setEditing(true);
@@ -337,10 +339,22 @@ export default function WishListPage() {
         {error && <div className="mx-5 px-4 py-3 bg-red-50 dark:bg-red-950/30 rounded-xl text-sm text-red-600">{error}</div>}
 
         <div className="flex flex-col gap-4 mx-5">
-          {selectedItem.photo && (
+          {selectedItem.photos.length > 0 && (
             <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={selectedItem.photo} alt={selectedItem.project} className="w-full object-contain max-h-72" />
+              {selectedItem.photos.length === 1 ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={selectedItem.photos[0]} alt={selectedItem.project} className="w-full object-contain max-h-72" />
+              ) : (
+                <div className="flex gap-1 overflow-x-auto snap-x snap-mandatory">
+                  {selectedItem.photos.map((url, i) => (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img key={i} src={url} alt={`${selectedItem.project} ${i + 1}`} className="w-full flex-shrink-0 snap-center object-contain max-h-72" />
+                  ))}
+                </div>
+              )}
+              {selectedItem.photos.length > 1 && (
+                <p className="text-center text-[10px] text-neutral-400 py-1">Swipe for more photos ({selectedItem.photos.length})</p>
+              )}
             </div>
           )}
 
@@ -521,9 +535,9 @@ export default function WishListPage() {
             const isSelected = selectedIds.has(item.id);
             return (
               <div key={item.id} className={`bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden transition-all ${isArchived ? "opacity-50" : ""}`}>
-                {item.photo && (
+                {item.photos.length > 0 && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.photo} alt={item.project} className="w-full h-32 object-cover cursor-pointer" onClick={() => setSelectedItem(item)} />
+                  <img src={item.photos[0]} alt={item.project} className="w-full h-32 object-cover cursor-pointer" onClick={() => setSelectedItem(item)} />
                 )}
                 <div className="flex items-start gap-3 p-4">
                   {/* Checkbox */}

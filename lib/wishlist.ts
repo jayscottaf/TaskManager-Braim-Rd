@@ -19,7 +19,7 @@ export interface WishListItem {
   priority: string | null;
   timeline: string | null;
   bestSeason: string | null;
-  photo: string | null;
+  photos: string[];
   notes: string | null;
   _status: string;
 }
@@ -36,7 +36,7 @@ export interface CreateWishListInput {
   priority?: string;
   timeline?: string;
   bestSeason?: string;
-  photo?: string;
+  photos?: string[];
   notes?: string;
 }
 
@@ -98,7 +98,7 @@ const DB_PROPERTIES = {
       ],
     },
   },
-  Photo: { url: {} },
+  Photos: { rich_text: {} },
   Notes: { rich_text: {} },
   _Status: {
     select: {
@@ -163,6 +163,14 @@ export async function getOrCreateDatabase(): Promise<string> {
   return db.id;
 }
 
+function parsePhotos(raw: string): string[] {
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { /* ignore */ }
+  // Legacy: single URL stored as plain text
+  if (raw.startsWith("http")) return [raw];
+  return [];
+}
+
 function pageToItem(page: PageObjectResponse): WishListItem {
   const p = page.properties;
 
@@ -199,13 +207,13 @@ function pageToItem(page: PageObjectResponse): WishListItem {
     aiPlan: getRichText("AI Plan"),
     estimatedCost: getNumber("Estimated Cost"),
     valueAdd: getNumber("Value Add"),
-    roi: getNumber("ROI"),
+    roi: getNumber("ROI") != null ? Math.round(getNumber("ROI")! * 100) : null,
     roiRating: getSelect("ROI Rating"),
     category: getSelect("Category"),
     priority: getSelect("Priority"),
     timeline: getSelect("Timeline"),
     bestSeason: getSelect("Best Season"),
-    photo: getUrl("Photo"),
+    photos: parsePhotos(getRichText("Photos")),
     notes: getRichText("Notes"),
     _status: getSelect("_Status") || "Active",
   };
@@ -263,7 +271,7 @@ export async function createWishListItem(input: CreateWishListInput): Promise<st
     const season = input.bestSeason.split("(")[0].trim();
     properties["Best Season"] = { select: { name: season } };
   }
-  if (input.photo) properties.Photo = { url: input.photo };
+  if (input.photos && input.photos.length > 0) properties.Photos = { rich_text: [{ text: { content: JSON.stringify(input.photos) } }] };
   if (input.notes) properties.Notes = { rich_text: [{ text: { content: input.notes } }] };
 
   const page = await notion.pages.create({
@@ -318,7 +326,7 @@ export async function updateWishListItem(
       properties["Best Season"] = { select: null };
     }
   }
-  if (updates.photo !== undefined) properties.Photo = { url: updates.photo || null };
+  if (updates.photos !== undefined) properties.Photos = { rich_text: updates.photos.length > 0 ? [{ text: { content: JSON.stringify(updates.photos) } }] : [] };
   if (updates.notes !== undefined) properties.Notes = updates.notes ? { rich_text: [{ text: { content: updates.notes } }] } : { rich_text: [] };
 
   if (Object.keys(properties).length > 0) {
