@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, Plus, X, Loader2 } from "lucide-react";
 import type { AISuggestion } from "@/lib/ai";
@@ -11,6 +11,13 @@ export function AIPanel() {
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
   const [adding, setAdding] = useState<string | null>(null);
+
+  useEffect(() => {
+    function handleOpen() { loadSuggestions(); }
+    window.addEventListener("open-ai", handleOpen);
+    return () => window.removeEventListener("open-ai", handleOpen);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function loadSuggestions() {
     setOpen(true);
