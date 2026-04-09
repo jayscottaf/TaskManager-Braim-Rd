@@ -49,7 +49,7 @@ export function TaskFilters() {
             onClick={() => setFilter("priority", activePriority === p ? "" : p)}
           />
         ))}
-        <span className="w-px bg-neutral-200 mx-1 self-stretch" />
+        <span className="w-px bg-neutral-200 dark:bg-neutral-700 mx-1 self-stretch" />
         {AREAS.map((a) => (
           <FilterChip
             key={a}
@@ -77,8 +77,8 @@ function FilterChip({
       onClick={onClick}
       className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex-shrink-0 ${
         active
-          ? "bg-neutral-950 text-white shadow-sm"
-          : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200 active:bg-neutral-200"
+          ? "bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 shadow-sm"
+          : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
       }`}
     >
       {label}

@@ -71,8 +71,8 @@ export function AIPanel() {
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[70vh] flex flex-col animate-slide-up">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+    <div className="fixed inset-x-0 bottom-0 z-50 bg-white dark:bg-neutral-900 rounded-t-3xl shadow-2xl max-h-[70vh] flex flex-col animate-slide-up">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 dark:border-neutral-800">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-blue-600" />
           <h2 className="font-semibold text-neutral-950">AI Suggestions</h2>
@@ -102,7 +102,7 @@ export function AIPanel() {
             {suggestions.map((s) => (
               <div
                 key={s.task}
-                className="bg-white rounded-xl p-4 shadow-sm"
+                className="bg-white dark:bg-neutral-800 rounded-xl p-4 shadow-sm"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -111,10 +111,10 @@ export function AIPanel() {
                     </h3>
                     <p className="text-xs text-neutral-500 mt-1">{s.reason}</p>
                     <div className="flex gap-1.5 mt-2">
-                      <span className="px-2 py-0.5 bg-neutral-100 rounded-md text-[11px] text-neutral-500 font-medium">
+                      <span className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-700 rounded-md text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">
                         {s.area}
                       </span>
-                      <span className="px-2 py-0.5 bg-neutral-100 rounded-md text-[11px] text-neutral-500 font-medium">
+                      <span className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-700 rounded-md text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">
                         {s.priority}
                       </span>
                     </div>

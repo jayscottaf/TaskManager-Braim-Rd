@@ -34,7 +34,7 @@ export function TaskCard({ task }: { task: Task }) {
   return (
     <Link
       href={`/task/${task.id}`}
-      className="group block bg-white rounded-2xl shadow-sm hover:shadow-md p-5 transition-all duration-200 active:scale-[0.99]"
+      className="group block bg-white dark:bg-neutral-900 rounded-2xl shadow-sm hover:shadow-md dark:shadow-neutral-900/50 p-5 transition-all duration-200 active:scale-[0.99]"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -42,7 +42,7 @@ export function TaskCard({ task }: { task: Task }) {
             <PriorityBadge priority={task.priority} />
             <StatusBadge status={task.status} />
           </div>
-          <h3 className="text-[15px] font-semibold text-neutral-950 truncate">{task.task}</h3>
+          <h3 className="text-[15px] font-semibold text-neutral-950 dark:text-neutral-50 truncate">{task.task}</h3>
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
             {task.area && (
@@ -66,7 +66,7 @@ export function TaskCard({ task }: { task: Task }) {
               {task.type.map((t) => (
                 <span
                   key={t}
-                  className="px-2 py-0.5 bg-neutral-100 text-neutral-500 rounded-md text-[11px] font-medium"
+                  className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 rounded-md text-[11px] font-medium"
                 >
                   {t}
                 </span>

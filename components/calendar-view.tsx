@@ -149,7 +149,7 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
       </div>
 
       {/* Calendar grid — desktop shows task pills, mobile shows dots */}
-      <div className="grid grid-cols-7 px-2 gap-px bg-gray-100 border border-gray-200 rounded-lg overflow-hidden">
+      <div className="grid grid-cols-7 px-2 gap-px bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
         {days.map((day) => {
           const dayTasks = getTasksForDay(day);
           const isInMonth = isSameMonth(day, currentMonth);
@@ -167,11 +167,11 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
                   selectedDate && isSameDay(day, selectedDate) ? null : day
                 )
               }
-              className={`flex flex-col min-h-[80px] sm:min-h-[100px] p-1 bg-white transition-colors text-left ${
+              className={`flex flex-col min-h-[80px] sm:min-h-[100px] p-1 bg-white dark:bg-neutral-900 transition-colors text-left ${
                 isSelected
-                  ? "ring-2 ring-inset ring-blue-500 bg-blue-50/30"
+                  ? "ring-2 ring-inset ring-blue-500 bg-blue-50/30 dark:bg-blue-950/30"
                   : ""
-              } ${!isInMonth ? "bg-gray-50/50" : ""}`}
+              } ${!isInMonth ? "bg-neutral-50/50 dark:bg-neutral-950/50" : ""}`}
             >
               {/* Day number */}
               <span

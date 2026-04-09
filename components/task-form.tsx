@@ -178,7 +178,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g., Fix leaky kitchen faucet"
           required
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-shadow"
+          className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-shadow"
         />
       </div>
 
@@ -188,7 +188,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
             Status
           </label>
-          <div className="grid grid-cols-2 gap-2 bg-neutral-100 rounded-xl p-1">
+          <div className="grid grid-cols-2 gap-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl p-1">
             {STATUSES.map((s) => (
               <button
                 key={s}
@@ -196,8 +196,8 @@ export function TaskForm({ task, mode }: TaskFormProps) {
                 onClick={() => setStatus(s)}
                 className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                   status === s
-                    ? "bg-white text-neutral-950 shadow-sm"
-                    : "text-neutral-500 hover:text-neutral-700"
+                    ? "bg-white dark:bg-neutral-700 text-neutral-950 dark:text-neutral-50 shadow-sm"
+                    : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
                 }`}
               >
                 {s}
@@ -212,7 +212,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
         <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Priority
         </label>
-        <div className="flex gap-1 bg-neutral-100 rounded-xl p-1">
+        <div className="flex gap-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl p-1">
           {PRIORITIES.map((p) => (
             <button
               key={p}
@@ -242,7 +242,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
         <select
           value={area}
           onChange={(e) => setArea(e.target.value as Area | "")}
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+          className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 text-base bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
         >
           <option value="">Select area...</option>
           {AREAS.map((a) => (
@@ -280,8 +280,8 @@ export function TaskForm({ task, mode }: TaskFormProps) {
               onClick={() => toggleType(t)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                 types.includes(t)
-                  ? "bg-neutral-950 text-white shadow-sm"
-                  : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+                  ? "bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 shadow-sm"
+                  : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
               }`}
             >
               {t}
@@ -298,7 +298,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
         <select
           value={frequency}
           onChange={(e) => setFrequency(e.target.value as Frequency | "")}
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base bg-white focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+          className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 text-base bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
         >
           <option value="">Select frequency...</option>
           {FREQUENCIES.map((f) => (
@@ -332,34 +332,34 @@ export function TaskForm({ task, mode }: TaskFormProps) {
         <p className="text-xs text-neutral-400 mt-1.5">End date is optional (for date ranges)</p>
       </div>
 
-      {/* Contractor/Vendor */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Contractor / Vendor
-        </label>
-        <input
-          type="text"
-          value={contractorVendor}
-          onChange={(e) => setContractorVendor(e.target.value)}
-          placeholder="e.g., Joe's Plumbing"
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-        />
-      </div>
-
-      {/* Cost Estimate */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Cost Estimate ($)
-        </label>
-        <input
-          type="number"
-          value={costEstimate}
-          onChange={(e) => setCostEstimate(e.target.value)}
-          placeholder="0"
-          min="0"
-          step="0.01"
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-        />
+      {/* Contractor + Cost side by side */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
+            Contractor / Vendor
+          </label>
+          <input
+            type="text"
+            value={contractorVendor}
+            onChange={(e) => setContractorVendor(e.target.value)}
+            placeholder="e.g., Joe's Plumbing"
+            className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
+            Cost Estimate ($)
+          </label>
+          <input
+            type="number"
+            value={costEstimate}
+            onChange={(e) => setCostEstimate(e.target.value)}
+            placeholder="0"
+            min="0"
+            step="0.01"
+            className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+          />
+        </div>
       </div>
 
       {/* Actual Cost (edit only) */}

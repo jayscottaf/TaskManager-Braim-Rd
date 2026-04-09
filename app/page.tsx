@@ -7,6 +7,7 @@ import { TaskFilters } from "@/components/task-filters";
 import { SeasonalBanner } from "@/components/seasonal-banner";
 import { OverdueBanner } from "@/components/overdue-banner";
 import { AIPanel } from "@/components/ai-panel";
+import { ThemeToggle } from "@/components/theme-toggle";
 import type { Status, Priority, Area } from "@/lib/types";
 
 interface PageProps {
@@ -28,7 +29,7 @@ async function TaskList({
   } catch (err: unknown) {
     const e = err as { code?: string; status?: number; message?: string };
     return (
-      <div className="mx-5 p-5 bg-red-50 rounded-2xl">
+      <div className="mx-5 p-5 bg-red-50 dark:bg-red-950/30 rounded-2xl">
         <p className="font-semibold text-red-700">Notion API Error</p>
         <p className="text-sm text-red-600 mt-1">{e.message}</p>
         {e.code && <p className="text-xs text-neutral-500 mt-1">Code: {e.code}</p>}
@@ -67,7 +68,7 @@ function TaskListSkeleton() {
       {[1, 2, 3, 4, 5].map((i) => (
         <div
           key={i}
-          className="bg-white rounded-2xl shadow-sm p-5 animate-pulse"
+          className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5 animate-pulse"
         >
           <div className="flex gap-2 mb-3">
             <div className="h-5 w-14 bg-neutral-100 rounded-md" />
@@ -90,9 +91,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   return (
     <div className="flex flex-col gap-6 pt-6 pb-6">
       {/* Header */}
-      <div className="px-5">
-        <h1 className="text-3xl font-bold tracking-tight text-neutral-950">Braim Rd</h1>
-        <p className="text-sm text-neutral-400 mt-0.5">Home Maintenance Tracker</p>
+      <div className="flex items-start justify-between px-5">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">Braim Rd</h1>
+          <p className="text-sm text-neutral-400 mt-0.5">Home Maintenance Tracker</p>
+        </div>
+        <ThemeToggle />
       </div>
 
       {/* Seasonal Banner */}
