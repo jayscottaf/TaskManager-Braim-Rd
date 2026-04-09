@@ -5,11 +5,11 @@ import type { Task } from "@/lib/types";
 import { PriorityBadge } from "./priority-badge";
 import { StatusBadge } from "./status-badge";
 
-function DueDateLabel({ dueDate }: { dueDate: Task["dueDate"] }) {
+function DueDateLabel({ dueDate, status }: { dueDate: Task["dueDate"]; status: string }) {
   if (!dueDate) return null;
   const date = new Date(dueDate.start + "T00:00:00");
   const now = new Date();
-  const overdue = isPast(date) && dueDate.start < format(now, "yyyy-MM-dd");
+  const overdue = status !== "Completed" && isPast(date) && dueDate.start < format(now, "yyyy-MM-dd");
   const dueSoon = isWithinInterval(date, { start: now, end: addDays(now, 3) });
 
   return (
@@ -52,7 +52,7 @@ export function TaskCard({ task }: { task: Task }) {
                 {task.subLocation ? ` · ${task.subLocation}` : ""}
               </span>
             )}
-            <DueDateLabel dueDate={task.dueDate} />
+            <DueDateLabel dueDate={task.dueDate} status={task.status} />
             {task.costEstimate !== null && (
               <span className="inline-flex items-center gap-1 text-xs text-gray-500">
                 <DollarSign className="w-3 h-3" />
