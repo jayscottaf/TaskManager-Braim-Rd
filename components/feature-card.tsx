@@ -4,10 +4,10 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Paintbrush, Refrigerator, HardHat, ShieldCheck, Package, Key,
-  Download, Check, Loader2, ExternalLink,
+  Download, Check, Loader2, ExternalLink, Trash2,
 } from "lucide-react";
 import type { FeatureTemplate } from "@/lib/feature-templates";
-import { isFeatureInstalled, saveInstalledFeature } from "@/lib/feature-store";
+import { isFeatureInstalled, saveInstalledFeature, getInstalledFeature, removeInstalledFeature } from "@/lib/feature-store";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Paintbrush, Refrigerator, HardHat, ShieldCheck, Package, Key,
@@ -17,6 +17,7 @@ export function FeatureCard({ template }: { template: FeatureTemplate }) {
   const router = useRouter();
   const [installed, setInstalled] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,6 +57,32 @@ export function FeatureCard({ template }: { template: FeatureTemplate }) {
 
   function handleOpen() {
     router.push(`/feature/${template.id}`);
+  }
+
+  async function handleUninstall() {
+    if (!confirm(`Uninstall ${template.name}? The Notion database will be archived.`)) return;
+    setUninstalling(true);
+    setError(null);
+    try {
+      const feature = getInstalledFeature(template.id);
+      if (feature) {
+        const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+        await fetch("/api/features/uninstall", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(secret ? { "x-app-secret": secret } : {}),
+          },
+          body: JSON.stringify({ databaseId: feature.databaseId }),
+        });
+      }
+      removeInstalledFeature(template.id);
+      setInstalled(false);
+    } catch (e: unknown) {
+      setError((e as Error).message);
+    } finally {
+      setUninstalling(false);
+    }
   }
 
   return (
@@ -107,10 +134,17 @@ export function FeatureCard({ template }: { template: FeatureTemplate }) {
             <ExternalLink className="w-3.5 h-3.5" />
             Open
           </button>
-          <span className="flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 text-sm font-medium">
-            <Check className="w-3.5 h-3.5" />
-            Installed
-          </span>
+          <button
+            onClick={handleUninstall}
+            disabled={uninstalling}
+            className="flex items-center gap-1 px-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 text-sm font-medium hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400 active:scale-[0.98] disabled:opacity-50 transition-all"
+          >
+            {uninstalling ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="w-3.5 h-3.5" />
+            )}
+          </button>
         </div>
       ) : (
         <button
