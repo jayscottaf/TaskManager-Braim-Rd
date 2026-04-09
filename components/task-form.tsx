@@ -316,51 +316,26 @@ export function TaskForm({ task, mode }: TaskFormProps) {
         <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
           Due Date
         </label>
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {[
-            { label: "Today", days: 0 },
-            { label: "Tomorrow", days: 1 },
-            { label: "This Week", days: (() => { const d = new Date(); return 7 - d.getDay(); })() },
-            { label: "Next Week", days: (() => { const d = new Date(); return 14 - d.getDay(); })() },
-            { label: "Next Month", days: 30 },
-            { label: "3 Months", days: 90 },
-          ].map(({ label, days }) => {
-            const d = new Date();
-            d.setDate(d.getDate() + days);
-            const val = d.toISOString().split("T")[0];
-            const isActive = dueDateStart === val;
-            return (
-              <button
-                key={label}
-                type="button"
-                onClick={() => setDueDateStart(val)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                  isActive
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
         <div className="flex gap-2 items-center">
           <input
             type="date"
             value={dueDateStart}
             onChange={(e) => setDueDateStart(e.target.value)}
-            className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+            onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+            readOnly={false}
+            className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow cursor-pointer"
           />
           <span className="text-neutral-300 text-sm">to</span>
           <input
             type="date"
             value={dueDateEnd}
             onChange={(e) => setDueDateEnd(e.target.value)}
-            className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+            onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+            readOnly={false}
+            className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow cursor-pointer"
           />
         </div>
-        <p className="text-xs text-neutral-400 mt-1.5">Pick a preset or use the calendar. End date is optional.</p>
+        <p className="text-xs text-neutral-400 mt-1.5">End date is optional (for date ranges)</p>
       </div>
 
       {/* Contractor + Cost side by side */}
