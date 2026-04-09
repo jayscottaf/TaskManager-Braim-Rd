@@ -1,4 +1,4 @@
-interface SeasonalRule {
+export interface SeasonalRule {
   name: string;
   startMonth: number;
   startDay: number;
