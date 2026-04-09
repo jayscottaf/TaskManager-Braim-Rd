@@ -45,7 +45,9 @@ export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Sa
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {schema.map((field, i) => (
+      {schema.map((field, i) => {
+        if (field.hidden) return null;
+        return (
         <div key={field.name}>
           <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-1.5">
             {field.name} {i === 0 && "*"}
@@ -107,7 +109,8 @@ export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Sa
             />
           )}
         </div>
-      ))}
+        );
+      })}
 
       <button
         type="submit"

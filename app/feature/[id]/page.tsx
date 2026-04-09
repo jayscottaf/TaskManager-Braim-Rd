@@ -8,6 +8,7 @@ import { getTemplate } from "@/lib/feature-templates";
 import { getInstalledFeature, saveInstalledFeature } from "@/lib/feature-store";
 import { DynamicForm } from "@/components/dynamic-form";
 import { PaintScanner } from "@/components/paint-scanner";
+import { ColorantTable } from "@/components/colorant-table";
 
 const FULL_DISPLAY_FIELDS = new Set(["Colorant Formula"]);
 
@@ -241,17 +242,31 @@ export default function FeaturePage() {
             )}
             <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5 flex flex-col gap-4">
               {template.schema.slice(1).map((field) => {
-                if (field.name === "Photo") return null;
+                if (field.name === "Photo" || field.hidden) return null;
                 const val = selectedItem[field.name];
                 const display = formatValue(field.name, field.type, val);
                 if (!display) return null;
-                const isFull = FULL_DISPLAY_FIELDS.has(field.name);
+
+                // Render colorant formula as a table
+                if (field.name === "Colorant Formula") {
+                  return (
+                    <div key={field.name}>
+                      <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">
+                        {field.name}
+                      </span>
+                      <div className="mt-1.5">
+                        <ColorantTable formula={String(val)} />
+                      </div>
+                    </div>
+                  );
+                }
+
                 return (
                   <div key={field.name}>
                     <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">
                       {field.name}
                     </span>
-                    <p className={`text-sm text-neutral-800 dark:text-neutral-200 mt-0.5 ${isFull ? "whitespace-pre-wrap font-mono text-xs leading-relaxed bg-neutral-50 dark:bg-neutral-800 rounded-lg p-3" : ""}`}>
+                    <p className="text-sm text-neutral-800 dark:text-neutral-200 mt-0.5">
                       {display}
                     </p>
                   </div>
