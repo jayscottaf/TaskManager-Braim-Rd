@@ -42,6 +42,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
   const [contractorVendor, setContractorVendor] = useState(task?.contractorVendor ?? "");
   const [costEstimate, setCostEstimate] = useState(task?.costEstimate?.toString() ?? "");
   const [actualCost, setActualCost] = useState(task?.actualCost?.toString() ?? "");
+  const [notes, setNotes] = useState(task?.notes ?? "");
 
   function toggleType(t: TaskType) {
     setTypes((prev) =>
@@ -75,6 +76,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           ...(dueDateStart ? { dueDate: { start: dueDateStart, ...(dueDateEnd ? { end: dueDateEnd } : {}) } } : {}),
           ...(contractorVendor ? { contractorVendor } : {}),
           ...(costEstimate ? { costEstimate: parseFloat(costEstimate) } : {}),
+          ...(notes ? { notes } : {}),
         };
         await fetch("/api/tasks", {
           method: "POST",
@@ -94,6 +96,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           contractorVendor: contractorVendor || undefined,
           costEstimate: costEstimate ? parseFloat(costEstimate) : undefined,
           actualCost: actualCost ? parseFloat(actualCost) : undefined,
+          notes: notes || undefined,
         };
         await fetch(`/api/tasks/${task!.id}`, {
           method: "PATCH",
@@ -378,6 +381,20 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           />
         </div>
       )}
+
+      {/* Notes */}
+      <div>
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
+          Notes
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Add notes, observations, or reminders..."
+          rows={3}
+          className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow resize-y"
+        />
+      </div>
 
       {/* Action buttons */}
       <div className="flex flex-col gap-2.5 pt-2">

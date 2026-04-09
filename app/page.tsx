@@ -25,7 +25,9 @@ async function TaskList({
 }) {
   let tasks;
   try {
-    tasks = await getTasks({ status, priority, area });
+    const allTasks = await getTasks({ status, priority, area });
+    // Hide completed tasks from dashboard unless explicitly filtered to Completed
+    tasks = status === "Completed" ? allTasks : allTasks.filter((t) => t.status !== "Completed");
   } catch (err: unknown) {
     const e = err as { code?: string; status?: number; message?: string };
     return (

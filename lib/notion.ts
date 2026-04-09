@@ -94,6 +94,7 @@ function pageToTask(page: PageObjectResponse): Task {
     contractorVendor: getText(page, "Contractor/Vendor"),
     costEstimate: getNumber(page, "Cost Estimate"),
     actualCost: getNumber(page, "Actual Cost"),
+    notes: getText(page, "Notes"),
     createdTime: page.created_time,
   };
 }
@@ -191,6 +192,11 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   if (input.costEstimate !== undefined) {
     properties["Cost Estimate"] = { number: input.costEstimate };
   }
+  if (input.notes) {
+    properties["Notes"] = {
+      rich_text: [{ text: { content: input.notes } }],
+    };
+  }
 
   const page = (await notion.pages.create({
     parent: { database_id: databaseId },
@@ -253,6 +259,11 @@ export async function updateTask(
   if (input.actualCost !== undefined) {
     properties["Actual Cost"] = { number: input.actualCost };
   }
+  if (input.notes !== undefined) {
+    properties["Notes"] = {
+      rich_text: [{ text: { content: input.notes } }],
+    };
+  }
 
   const page = (await notion.pages.update({
     page_id: id,
@@ -264,4 +275,24 @@ export async function updateTask(
 
 export async function deleteTask(id: string): Promise<void> {
   await notion.pages.update({ page_id: id, archived: true });
+}
+
+// Ensure the "Notes" property exists in the database
+let notesPropertyEnsured = false;
+export async function ensureNotesProperty(): Promise<void> {
+  if (notesPropertyEnsured) return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = (await notion.databases.retrieve({ database_id: databaseId })) as any;
+    if (!db.properties?.["Notes"]) {
+      await notion.databases.update({
+        database_id: databaseId,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        properties: { Notes: { rich_text: {} } } as any,
+      });
+    }
+    notesPropertyEnsured = true;
+  } catch {
+    // Non-critical — notes will just be unavailable
+  }
 }
