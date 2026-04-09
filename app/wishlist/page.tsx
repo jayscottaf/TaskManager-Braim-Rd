@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, X, Loader2, ArrowLeft, Pencil, ChevronRight, Archive,
-  ArchiveRestore, Trash2, Eye, EyeOff, ArrowUpDown,
+  ArchiveRestore, Trash2, Eye, EyeOff, ArrowUpDown, Rocket, CalendarPlus,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { WishListItem } from "@/lib/wishlist";
 import type { WishListPlan } from "@/lib/ai";
 import { ProjectPlanner } from "@/components/project-planner";
@@ -34,6 +35,10 @@ export default function WishListPage() {
   const [selectedItem, setSelectedItem] = useState<WishListItem | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [promoting, setPromoting] = useState(false);
+  const [promoteDate, setPromoteDate] = useState("");
+  const [promoteEndDate, setPromoteEndDate] = useState("");
+  const router = useRouter();
 
   // Form state for add/edit
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -173,6 +178,60 @@ export default function WishListPage() {
       setSelectedItem(null);
       loadItems(showArchived);
     } catch (e: unknown) { setError((e as Error).message); }
+  }
+
+  // Map wish list category to task area/type
+  const CATEGORY_TO_AREA: Record<string, string> = {
+    Landscaping: "Garden", Driveway: "Driveway/Walkway", Interior: "Living Room",
+    Exterior: "Exterior", Roofing: "Roof", Plumbing: "Bathroom",
+    Electrical: "Living Room", General: "Exterior",
+  };
+  const CATEGORY_TO_TYPE: Record<string, string> = {
+    Landscaping: "Landscaping", Driveway: "General Repair", Interior: "Carpentry",
+    Exterior: "Carpentry", Roofing: "General Repair", Plumbing: "Plumbing",
+    Electrical: "Electrical", General: "General Repair",
+  };
+
+  async function handlePromote(item: WishListItem) {
+    if (!promoteDate) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const notes = [
+        item.description,
+        item.aiPlan ? `\nAI Plan:\n${item.aiPlan}` : "",
+        item.roiRating ? `\nROI: ${item.roi ?? "?"}% (${item.roiRating})` : "",
+        item.bestSeason ? `\nBest Season: ${item.bestSeason}` : "",
+        item.notes ? `\nNotes: ${item.notes}` : "",
+      ].filter(Boolean).join("");
+
+      const body = {
+        task: item.project,
+        status: "Not Started",
+        priority: item.priority || "Medium",
+        area: CATEGORY_TO_AREA[item.category || "General"] || "Exterior",
+        type: [CATEGORY_TO_TYPE[item.category || "General"] || "General Repair"],
+        frequency: "One-time",
+        costEstimate: item.estimatedCost || 0,
+        dueDate: { start: promoteDate, ...(promoteEndDate ? { end: promoteEndDate } : {}) },
+        notes: notes.slice(0, 2000),
+      };
+
+      const res = await fetch("/api/tasks", {
+        method: "POST", headers: headers(), body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to create task");
+
+      setPromoting(false);
+      setPromoteDate("");
+      setPromoteEndDate("");
+      setSelectedItem(null);
+      router.push("/calendar");
+    } catch (e: unknown) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Sorted items
@@ -454,6 +513,42 @@ export default function WishListPage() {
               </div>
             ) : (
               <>
+                {/* Start This Project */}
+                {!promoting ? (
+                  <button onClick={() => { setPromoting(true); setPromoteDate(""); setPromoteEndDate(""); }}
+                    className="flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:scale-[0.98] transition-all">
+                    <Rocket className="w-4 h-4" /> Start This Project
+                  </button>
+                ) : (
+                  <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl p-4 flex flex-col gap-3 border border-emerald-200 dark:border-emerald-900">
+                    <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                      <CalendarPlus className="w-4 h-4" /> Schedule it — add to your task list & calendar
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-1">Start Date *</label>
+                        <input type="date" value={promoteDate} onChange={(e) => setPromoteDate(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800 dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-1">End Date</label>
+                        <input type="date" value={promoteEndDate} onChange={(e) => setPromoteEndDate(e.target.value)} min={promoteDate}
+                          className="w-full px-3 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800 dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setPromoting(false)}
+                        className="flex-1 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-500 text-sm font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 active:scale-[0.98] transition-all">
+                        Cancel
+                      </button>
+                      <button onClick={() => handlePromote(selectedItem)} disabled={saving || !promoteDate}
+                        className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98] transition-all">
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CalendarPlus className="w-4 h-4" /> Add to Calendar</>}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <button onClick={() => handleAction(selectedItem.id, "archive")}
                   className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-amber-200 dark:border-amber-900 text-amber-600 dark:text-amber-400 text-sm font-medium hover:bg-amber-50 dark:hover:bg-amber-950/30 active:scale-[0.98] transition-all">
                   <Archive className="w-4 h-4" /> Archive
