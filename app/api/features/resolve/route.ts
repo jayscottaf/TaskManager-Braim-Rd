@@ -28,40 +28,44 @@ export async function GET(request: NextRequest) {
       page_size: 100,
     });
 
-    // Find the most recently created, non-archived database matching this template name
-    let bestDb: { id: string; createdTime: string } | null = null;
+    // Find the best database: prefer non-archived, then most recent
+    let best: { id: string; archived: boolean; createdTime: string } | null = null;
 
     for (const block of children.results) {
       if (!("type" in block) || block.type !== "child_database") continue;
-      {
-        // Fetch the full database to check if archived and get title
-        try {
-          const db = await notion.databases.retrieve({
-            database_id: block.id,
-          }) as DatabaseObjectResponse;
+      try {
+        const db = await notion.databases.retrieve({
+          database_id: block.id,
+        }) as DatabaseObjectResponse;
 
-          if (db.archived) continue;
+        const title = db.title.map((t) => t.plain_text).join("");
+        if (title !== template.name) continue;
 
-          const title = db.title.map((t) => t.plain_text).join("");
-          if (title === template.name) {
-            if (!bestDb || db.created_time > bestDb.createdTime) {
-              bestDb = { id: db.id, createdTime: db.created_time };
-            }
-          }
-        } catch {
-          // Skip databases we can't access
-          continue;
+        if (!best ||
+            (!db.archived && best.archived) ||
+            (db.archived === best.archived && db.created_time > best.createdTime)) {
+          best = { id: db.id, archived: db.archived, createdTime: db.created_time };
         }
+      } catch {
+        continue;
       }
     }
 
-    if (!bestDb) {
+    if (!best) {
       return NextResponse.json({ installed: false });
+    }
+
+    // Restore if archived
+    if (best.archived) {
+      await notion.databases.update({
+        database_id: best.id,
+        archived: false,
+      });
     }
 
     return NextResponse.json({
       installed: true,
-      databaseId: bestDb.id,
+      databaseId: best.id,
       featureId: template.id,
       name: template.name,
     });

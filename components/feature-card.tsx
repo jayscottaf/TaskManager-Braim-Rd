@@ -4,10 +4,10 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Paintbrush, Refrigerator, HardHat, ShieldCheck, Package, Key,
-  Download, Check, Loader2, ExternalLink, Trash2,
+  Download, Loader2, ExternalLink, Trash2,
 } from "lucide-react";
 import type { FeatureTemplate } from "@/lib/feature-templates";
-import { isFeatureInstalled, saveInstalledFeature, getInstalledFeature, removeInstalledFeature } from "@/lib/feature-store";
+import { isFeatureInstalled, saveInstalledFeature, removeInstalledFeature } from "@/lib/feature-store";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Paintbrush, Refrigerator, HardHat, ShieldCheck, Package, Key,
@@ -83,22 +83,10 @@ export function FeatureCard({ template }: { template: FeatureTemplate }) {
   }
 
   async function handleUninstall() {
-    if (!confirm(`Uninstall ${template.name}? The Notion database will be archived.`)) return;
+    if (!confirm(`Remove ${template.name} from this device? Your data in Notion will be preserved.`)) return;
     setUninstalling(true);
     setError(null);
     try {
-      const feature = getInstalledFeature(template.id);
-      if (feature) {
-        const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-        await fetch("/api/features/uninstall", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(secret ? { "x-app-secret": secret } : {}),
-          },
-          body: JSON.stringify({ databaseId: feature.databaseId }),
-        });
-      }
       removeInstalledFeature(template.id);
       setInstalled(false);
     } catch (e: unknown) {
