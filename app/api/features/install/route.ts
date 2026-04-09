@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Client } from "@notionhq/client";
 import { checkAuth } from "@/lib/auth";
 import { getTemplate } from "@/lib/feature-templates";
-import { findBestDatabase, restoreDatabase, FEATURES_PAGE_ID } from "@/lib/feature-db";
+import { findBestDatabase, restoreDatabase, syncDatabaseSchema, FEATURES_PAGE_ID } from "@/lib/feature-db";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
@@ -25,6 +25,9 @@ export async function POST(request: NextRequest) {
       if (existing.archived) {
         await restoreDatabase(existing.id);
       }
+
+      // Sync schema — adds any new columns from template updates
+      await syncDatabaseSchema(existing.id, template.schema);
 
       return NextResponse.json({
         databaseId: existing.id,

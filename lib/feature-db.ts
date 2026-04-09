@@ -1,5 +1,6 @@
 import { Client } from "@notionhq/client";
 import type { DatabaseObjectResponse } from "@notionhq/client/build/src/api-endpoints";
+import type { FieldDefinition } from "./feature-templates";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
@@ -81,4 +82,74 @@ export async function restoreDatabase(databaseId: string): Promise<void> {
     database_id: databaseId,
     archived: false,
   });
+}
+
+/**
+ * Build the Notion property definition for a schema field.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fieldToNotionProperty(field: FieldDefinition): Record<string, any> {
+  switch (field.type) {
+    case "text":
+    case "textarea":
+      return { rich_text: {} };
+    case "number":
+      return {
+        number: {
+          format: field.name.toLowerCase().includes("price") ||
+            field.name.toLowerCase().includes("cost") ||
+            field.name.toLowerCase().includes("value")
+            ? "dollar" : "number",
+        },
+      };
+    case "select":
+      return { select: { options: (field.options || []).map((o) => ({ name: o })) } };
+    case "date":
+      return { date: {} };
+    case "url":
+      return { url: {} };
+    default:
+      return { rich_text: {} };
+  }
+}
+
+/**
+ * Sync a database's properties with the template schema.
+ * Adds any missing columns (from schema updates) without touching existing data.
+ */
+export async function syncDatabaseSchema(
+  databaseId: string,
+  schema: FieldDefinition[]
+): Promise<void> {
+  const db = await notion.databases.retrieve({
+    database_id: databaseId,
+  }) as DatabaseObjectResponse;
+
+  const existingProps = new Set(Object.keys(db.properties));
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const missingProps: Record<string, any> = {};
+
+  // Check schema fields (skip first — it's always the title, which always exists)
+  for (let i = 1; i < schema.length; i++) {
+    const field = schema[i];
+    if (!existingProps.has(field.name)) {
+      missingProps[field.name] = fieldToNotionProperty(field);
+    }
+  }
+
+  // Check internal _Status field
+  if (!existingProps.has("_Status")) {
+    missingProps["_Status"] = {
+      select: { options: [{ name: "Active" }, { name: "Archived" }] },
+    };
+  }
+
+  // Only call update if there are missing properties
+  if (Object.keys(missingProps).length > 0) {
+    await notion.databases.update({
+      database_id: databaseId,
+      properties: missingProps,
+    });
+  }
 }

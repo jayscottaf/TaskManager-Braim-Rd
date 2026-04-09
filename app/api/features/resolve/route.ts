@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkAuth } from "@/lib/auth";
 import { getTemplate } from "@/lib/feature-templates";
-import { findBestDatabase, restoreDatabase } from "@/lib/feature-db";
+import { findBestDatabase, restoreDatabase, syncDatabaseSchema } from "@/lib/feature-db";
 
 export async function GET(request: NextRequest) {
   const authError = checkAuth(request);
@@ -27,6 +27,9 @@ export async function GET(request: NextRequest) {
     if (best.archived) {
       await restoreDatabase(best.id);
     }
+
+    // Sync schema — adds any missing columns from template updates
+    await syncDatabaseSchema(best.id, template.schema);
 
     return NextResponse.json({
       installed: true,
