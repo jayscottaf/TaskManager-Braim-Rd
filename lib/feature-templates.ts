@@ -36,6 +36,7 @@ export const FEATURE_TEMPLATES: FeatureTemplate[] = [
       { name: "Store", type: "text", placeholder: "e.g., Home Depot, Sherwin-Williams" },
       { name: "Purchase Date", type: "date" },
       { name: "Price", type: "number" },
+      { name: "Photo", type: "url", placeholder: "Photo URL (auto-filled by scanner)" },
     ],
   },
   {

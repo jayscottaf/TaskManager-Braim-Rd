@@ -9,7 +9,7 @@ interface PaintScannerProps {
 }
 
 // Map AI response fields to paint tracker schema field names
-function mapScanToFormData(scan: PaintLabelScan): Record<string, string> {
+function mapScanToFormData(scan: PaintLabelScan, photoUrl?: string): Record<string, string> {
   const data: Record<string, string> = {};
   if (scan.brand) data["Brand"] = scan.brand;
   if (scan.colorName) data["Color Name"] = scan.colorName;
@@ -22,6 +22,7 @@ function mapScanToFormData(scan: PaintLabelScan): Record<string, string> {
   if (scan.roomsUsed) data["Rooms Used"] = scan.roomsUsed;
   if (scan.store) data["Store"] = scan.store;
   if (scan.purchaseDate) data["Purchase Date"] = scan.purchaseDate;
+  if (photoUrl) data["Photo"] = photoUrl;
   return data;
 }
 
@@ -42,20 +43,40 @@ export function PaintScanner({ onScanned }: PaintScannerProps) {
     setScanned(false);
 
     try {
-      const formData = new FormData();
-      formData.append("image", file);
-
       const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-      const res = await fetch("/api/ai/classify-paint", {
-        method: "POST",
-        headers: secret ? { "x-app-secret": secret } : {},
-        body: formData,
-      });
+      const headers: Record<string, string> = secret ? { "x-app-secret": secret } : {};
 
-      if (!res.ok) throw new Error("Scan failed");
+      // Run AI scan and photo upload in parallel
+      const scanForm = new FormData();
+      scanForm.append("image", file);
 
-      const result: PaintLabelScan = await res.json();
-      const mapped = mapScanToFormData(result);
+      const uploadForm = new FormData();
+      uploadForm.append("image", file);
+
+      const [scanRes, uploadRes] = await Promise.all([
+        fetch("/api/ai/classify-paint", {
+          method: "POST",
+          headers,
+          body: scanForm,
+        }),
+        fetch("/api/upload", {
+          method: "POST",
+          headers,
+          body: uploadForm,
+        }).catch(() => null), // Upload failure is non-critical
+      ]);
+
+      if (!scanRes.ok) throw new Error("Scan failed");
+
+      const result: PaintLabelScan = await scanRes.json();
+      let photoUrl: string | undefined;
+
+      if (uploadRes?.ok) {
+        const uploadData = await uploadRes.json();
+        photoUrl = uploadData.url;
+      }
+
+      const mapped = mapScanToFormData(result, photoUrl);
       onScanned(mapped);
       setScanned(true);
     } catch {

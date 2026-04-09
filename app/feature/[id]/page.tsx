@@ -192,23 +192,36 @@ export default function FeaturePage() {
             />
           </div>
         ) : (
-          <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5 flex flex-col gap-4">
-            {template.schema.slice(1).map((field) => {
-              const val = selectedItem[field.name];
-              const display = formatValue(field.name, field.type, val);
-              if (!display) return null;
-              const isFull = FULL_DISPLAY_FIELDS.has(field.name);
-              return (
-                <div key={field.name}>
-                  <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">
-                    {field.name}
-                  </span>
-                  <p className={`text-sm text-neutral-800 dark:text-neutral-200 mt-0.5 ${isFull ? "whitespace-pre-wrap font-mono text-xs leading-relaxed bg-neutral-50 dark:bg-neutral-800 rounded-lg p-3" : ""}`}>
-                    {display}
-                  </p>
-                </div>
-              );
-            })}
+          <div className="flex flex-col gap-4 mx-5">
+            {selectedItem["Photo"] && (
+              <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={selectedItem["Photo"]}
+                  alt={selectedItem[titleField] || "Photo"}
+                  className="w-full object-contain max-h-72"
+                />
+              </div>
+            )}
+            <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5 flex flex-col gap-4">
+              {template.schema.slice(1).map((field) => {
+                if (field.name === "Photo") return null;
+                const val = selectedItem[field.name];
+                const display = formatValue(field.name, field.type, val);
+                if (!display) return null;
+                const isFull = FULL_DISPLAY_FIELDS.has(field.name);
+                return (
+                  <div key={field.name}>
+                    <span className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">
+                      {field.name}
+                    </span>
+                    <p className={`text-sm text-neutral-800 dark:text-neutral-200 mt-0.5 ${isFull ? "whitespace-pre-wrap font-mono text-xs leading-relaxed bg-neutral-50 dark:bg-neutral-800 rounded-lg p-3" : ""}`}>
+                      {display}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -279,8 +292,17 @@ export default function FeaturePage() {
             <button
               key={item.id}
               onClick={() => setSelectedItem(item)}
-              className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-4 transition-all hover:shadow-md active:scale-[0.99] text-left w-full"
+              className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden transition-all hover:shadow-md active:scale-[0.99] text-left w-full"
             >
+              {item["Photo"] && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={item["Photo"]}
+                  alt={item[titleField] || "Photo"}
+                  className="w-full h-36 object-cover"
+                />
+              )}
+              <div className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-[15px] font-semibold text-neutral-950 dark:text-neutral-50">
                   {item[titleField] || "Untitled"}
@@ -290,6 +312,7 @@ export default function FeaturePage() {
               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 {template.schema.slice(1).map((field) => {
                   const val = item[field.name];
+                  if (field.name === "Photo") return null;
                   const display = formatValue(field.name, field.type, val);
                   if (!display) return null;
                   // Show preview (truncated) on cards — full view is in detail
@@ -304,6 +327,7 @@ export default function FeaturePage() {
                     </div>
                   );
                 })}
+              </div>
               </div>
             </button>
           ))}
