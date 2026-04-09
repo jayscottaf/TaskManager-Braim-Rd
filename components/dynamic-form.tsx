@@ -12,14 +12,14 @@ interface DynamicFormProps {
 }
 
 export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Save Entry" }: DynamicFormProps) {
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, string>>(initialValues ?? {});
   const [saving, setSaving] = useState(false);
-  const prevInitial = useRef(initialValues);
+  const prevInitialRef = useRef(initialValues);
 
-  // Merge in new initialValues when they change (e.g. from a scan)
+  // Merge in new initialValues when they change (e.g. from a scan or opening edit)
   useEffect(() => {
-    if (initialValues && initialValues !== prevInitial.current) {
-      prevInitial.current = initialValues;
+    if (initialValues && initialValues !== prevInitialRef.current) {
+      prevInitialRef.current = initialValues;
       setValues((prev) => ({ ...prev, ...initialValues }));
     }
   }, [initialValues]);

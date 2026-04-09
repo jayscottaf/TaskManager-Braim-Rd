@@ -6,6 +6,27 @@ import type { PageObjectResponse } from "@notionhq/client/build/src/api-endpoint
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
+/**
+ * Ensure the _Status select property exists on a database.
+ * If missing, add it. This handles databases created before archive support.
+ */
+async function ensureStatusProperty(pageId: string): Promise<void> {
+  // Get the page to find its parent database
+  const page = await notion.pages.retrieve({ page_id: pageId }) as PageObjectResponse;
+  if (!("database_id" in page.parent)) return;
+
+  const dbId = page.parent.database_id;
+  const db = await notion.databases.retrieve({ database_id: dbId });
+  if ("properties" in db && !db.properties["_Status"]) {
+    await notion.databases.update({
+      database_id: dbId,
+      properties: {
+        "_Status": { select: { options: [{ name: "Active" }, { name: "Archived" }] } },
+      },
+    });
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -188,12 +209,20 @@ export async function PATCH(
 
     // Handle archive/restore actions
     if (_action === "archive" || _action === "restore") {
-      await notion.pages.update({
-        page_id: pageId,
-        properties: {
-          "_Status": { select: { name: _action === "archive" ? "Archived" : "Active" } },
-        },
-      });
+      const statusValue = _action === "archive" ? "Archived" : "Active";
+      try {
+        await notion.pages.update({
+          page_id: pageId,
+          properties: { "_Status": { select: { name: statusValue } } },
+        });
+      } catch {
+        // Property doesn't exist yet — add it to the database, then retry
+        await ensureStatusProperty(pageId);
+        await notion.pages.update({
+          page_id: pageId,
+          properties: { "_Status": { select: { name: statusValue } } },
+        });
+      }
       return NextResponse.json({ success: true });
     }
 

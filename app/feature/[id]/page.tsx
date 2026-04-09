@@ -275,9 +275,9 @@ export default function FeaturePage() {
             </div>
 
             {/* Archive / Restore / Delete */}
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               {isArchived ? (
-                <>
+                <div className="flex gap-2">
                   <button
                     onClick={() => handleRestore(selectedItem.id)}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400 text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-950/30 active:scale-[0.98] transition-all"
@@ -287,7 +287,7 @@ export default function FeaturePage() {
                   </button>
                   <button
                     onClick={() => {
-                      if (confirm("Permanently delete? This moves it to Notion's trash (recoverable for 30 days).")) {
+                      if (confirm("Permanently delete this entry? This cannot be undone.")) {
                         handleDelete(selectedItem.id);
                       }
                     }}
@@ -295,15 +295,28 @@ export default function FeaturePage() {
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
-                </>
+                </div>
               ) : (
-                <button
-                  onClick={() => handleArchive(selectedItem.id)}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-amber-200 dark:border-amber-900 text-amber-600 dark:text-amber-400 text-sm font-medium hover:bg-amber-50 dark:hover:bg-amber-950/30 active:scale-[0.98] transition-all"
-                >
-                  <Archive className="w-4 h-4" />
-                  Archive
-                </button>
+                <>
+                  <button
+                    onClick={() => handleArchive(selectedItem.id)}
+                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-amber-200 dark:border-amber-900 text-amber-600 dark:text-amber-400 text-sm font-medium hover:bg-amber-50 dark:hover:bg-amber-950/30 active:scale-[0.98] transition-all"
+                  >
+                    <Archive className="w-4 h-4" />
+                    Archive
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm("Are you sure you want to permanently delete this? This cannot be undone.\n\nTip: Use Archive instead to hide it while keeping the data.")) {
+                        handleDelete(selectedItem.id);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-neutral-400 text-xs hover:text-red-500 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete permanently
+                  </button>
+                </>
               )}
             </div>
           </div>
