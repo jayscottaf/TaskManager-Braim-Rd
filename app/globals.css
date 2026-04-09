@@ -31,6 +31,12 @@ body {
   }
 }
 
+@supports (padding-top: env(safe-area-inset-top)) {
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
 /* Animations */
 @keyframes fade-in {
   from {

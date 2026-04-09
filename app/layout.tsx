@@ -21,7 +21,10 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#2563eb",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 };
 
 const themeScript = `
@@ -45,8 +48,10 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full bg-[#fafafa] dark:bg-neutral-950 text-neutral-950 dark:text-neutral-50 transition-colors">
-        <div className="h-0.5 bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400" />
-        <main className="pb-20 max-w-2xl mx-auto">{children}</main>
+        <div className="pt-[env(safe-area-inset-top)]">
+          <div className="h-0.5 bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400" />
+          <main className="pb-20 max-w-2xl mx-auto">{children}</main>
+        </div>
         <BottomNav />
         <ToastProvider />
         <ServiceWorkerRegister />
