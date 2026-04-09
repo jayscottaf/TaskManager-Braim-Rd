@@ -18,10 +18,33 @@ export function FeatureCard({ template }: { template: FeatureTemplate }) {
   const [installed, setInstalled] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
+  const [resolving, setResolving] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setInstalled(isFeatureInstalled(template.id));
+    // Check server first (cross-device), then fall back to localStorage
+    async function resolve() {
+      try {
+        const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+        const res = await fetch(`/api/features/resolve?featureId=${template.id}`, {
+          headers: secret ? { "x-app-secret": secret } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.installed && data.databaseId) {
+            saveInstalledFeature(template.id, data.databaseId);
+            setInstalled(true);
+            setResolving(false);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to localStorage
+      }
+      setInstalled(isFeatureInstalled(template.id));
+      setResolving(false);
+    }
+    resolve();
   }, [template.id]);
 
   const Icon = ICONS[template.icon] || Package;

@@ -26,8 +26,14 @@ export function isFeatureInstalled(featureId: string): boolean {
 
 export function saveInstalledFeature(featureId: string, databaseId: string): void {
   const features = getInstalledFeatures();
-  if (features.some((f) => f.featureId === featureId)) return;
-  features.push({ featureId, databaseId, installedAt: new Date().toISOString() });
+  const existing = features.find((f) => f.featureId === featureId);
+  if (existing) {
+    // Update database ID if it changed (e.g. resolved from server on another device)
+    if (existing.databaseId === databaseId) return;
+    existing.databaseId = databaseId;
+  } else {
+    features.push({ featureId, databaseId, installedAt: new Date().toISOString() });
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(features));
 }
 

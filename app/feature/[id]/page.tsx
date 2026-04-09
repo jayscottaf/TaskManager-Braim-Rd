@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Plus, X, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { getTemplate } from "@/lib/feature-templates";
-import { getInstalledFeature } from "@/lib/feature-store";
+import { getInstalledFeature, saveInstalledFeature } from "@/lib/feature-store";
 import { DynamicForm } from "@/components/dynamic-form";
 import { PaintScanner } from "@/components/paint-scanner";
 
@@ -40,13 +40,37 @@ export default function FeaturePage() {
   }, [id]);
 
   useEffect(() => {
-    const installed = getInstalledFeature(id);
-    if (!installed) {
-      router.push("/store");
-      return;
+    async function resolveAndLoad() {
+      // First try to resolve from Notion (server-side, cross-device)
+      try {
+        const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+        const res = await fetch(`/api/features/resolve?featureId=${id}`, {
+          headers: secret ? { "x-app-secret": secret } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.installed && data.databaseId) {
+            // Sync localStorage with the server-resolved database
+            saveInstalledFeature(id, data.databaseId);
+            setDbId(data.databaseId);
+            loadItems(data.databaseId);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to localStorage
+      }
+
+      // Fallback to localStorage
+      const installed = getInstalledFeature(id);
+      if (!installed) {
+        router.push("/store");
+        return;
+      }
+      setDbId(installed.databaseId);
+      loadItems(installed.databaseId);
     }
-    setDbId(installed.databaseId);
-    loadItems(installed.databaseId);
+    resolveAndLoad();
   }, [id, router, loadItems]);
 
   if (!template) {
