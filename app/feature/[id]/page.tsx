@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Plus, X, Loader2, Pencil, ChevronRight } from "lucide-react";
+import { ArrowLeft, Plus, X, Loader2, Pencil, ChevronRight, Archive, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { getTemplate } from "@/lib/feature-templates";
 import { getInstalledFeature, saveInstalledFeature } from "@/lib/feature-store";
@@ -132,6 +132,29 @@ export default function FeaturePage() {
     }
   }
 
+  async function handleDelete(pageId: string) {
+    if (!dbId) return;
+    try {
+      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+      const res = await fetch(`/api/features/${id}/items`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...(secret ? { "x-app-secret": secret } : {}),
+        },
+        body: JSON.stringify({ pageId }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error);
+      }
+      setSelectedItem(null);
+      loadItems(dbId);
+    } catch (e: unknown) {
+      setError((e as Error).message);
+    }
+  }
+
   const titleField = template.schema[0].name;
 
   function formatValue(fieldName: string, fieldType: string, val: unknown): string {
@@ -221,6 +244,21 @@ export default function FeaturePage() {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Archive / Delete */}
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={() => {
+                  if (confirm("Delete this entry? It will be moved to Notion's trash (recoverable for 30 days).")) {
+                    handleDelete(selectedItem.id);
+                  }
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-950/30 active:scale-[0.98] transition-all"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete
+              </button>
             </div>
           </div>
         )}

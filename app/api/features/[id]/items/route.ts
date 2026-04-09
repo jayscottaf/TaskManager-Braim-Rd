@@ -189,3 +189,30 @@ export async function PATCH(
     return NextResponse.json({ error: `Failed to update item: ${msg}` }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authError = checkAuth(request);
+  if (authError) return authError;
+
+  try {
+    await params; // consume params
+    const { pageId } = await request.json();
+
+    if (!pageId) return NextResponse.json({ error: "pageId required" }, { status: 400 });
+
+    // Archive the page in Notion (moves to trash, recoverable for 30 days)
+    await notion.pages.update({
+      page_id: pageId,
+      archived: true,
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Feature items DELETE error:", error);
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: `Failed to delete item: ${msg}` }, { status: 500 });
+  }
+}
