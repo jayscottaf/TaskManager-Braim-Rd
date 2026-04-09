@@ -58,7 +58,10 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
 
       const [planRes, uploadRes] = await Promise.all(promises);
 
-      if (!planRes?.ok) throw new Error("Planning failed");
+      if (!planRes || !planRes.ok) {
+        const errData = planRes ? await planRes.json().catch(() => null) : null;
+        throw new Error(errData?.error || `Planning failed (${planRes?.status || "no response"})`);
+      }
 
       const plan: WishListPlan = await planRes.json();
       let photoUrl: string | undefined;
@@ -69,8 +72,8 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
       }
 
       onPlanned(plan, photoUrl);
-    } catch {
-      setError("Failed to plan project. Try again.");
+    } catch (err: unknown) {
+      setError((err as Error).message || "Failed to plan project. Try again.");
     } finally {
       setLoading(false);
     }

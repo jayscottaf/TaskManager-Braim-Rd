@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { planWishListProject } from "@/lib/ai";
 import { checkAuth } from "@/lib/auth";
 
+export const maxDuration = 30;
+
 export async function POST(request: NextRequest) {
   const authError = checkAuth(request);
   if (authError) return authError;
@@ -28,8 +30,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(plan);
   } catch (error) {
     console.error("Plan project error:", error);
+    const msg = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to plan project" },
+      { error: `Failed to plan project: ${msg}` },
       { status: 500 }
     );
   }
