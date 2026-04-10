@@ -44,6 +44,36 @@ async function TaskList({
         return due <= cutoff; // Includes overdue (due < now) and due within range
       });
     }
+
+    // Sort: In Progress → Overdue → Priority → Due Date → No date last
+    const PRIORITY_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    tasks.sort((a, b) => {
+      // In Progress first
+      const aInProg = a.status === "In Progress" ? 1 : 0;
+      const bInProg = b.status === "In Progress" ? 1 : 0;
+      if (aInProg !== bInProg) return bInProg - aInProg;
+
+      // Overdue next
+      const aDate = a.dueDate ? new Date(a.dueDate.start) : null;
+      const bDate = b.dueDate ? new Date(b.dueDate.start) : null;
+      const aOverdue = aDate && aDate < now ? 1 : 0;
+      const bOverdue = bDate && bDate < now ? 1 : 0;
+      if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+
+      // Then by priority
+      const aPri = PRIORITY_ORDER[a.priority || ""] ?? 3;
+      const bPri = PRIORITY_ORDER[b.priority || ""] ?? 3;
+      if (aPri !== bPri) return aPri - bPri;
+
+      // Then by due date (soonest first, no-date last)
+      if (aDate && bDate) return aDate.getTime() - bDate.getTime();
+      if (aDate) return -1;
+      if (bDate) return 1;
+      return 0;
+    });
   } catch (err: unknown) {
     const e = err as { code?: string; status?: number; message?: string };
     return (
