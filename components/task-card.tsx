@@ -4,9 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format, isPast, isWithinInterval, addDays } from "date-fns";
-import { ChevronRight, Calendar, DollarSign, MapPin } from "lucide-react";
+import { ChevronRight, Calendar, DollarSign, MapPin, Repeat } from "lucide-react";
 import type { Task, Priority, Status } from "@/lib/types";
 import { PRIORITIES, STATUSES } from "@/lib/types";
+import { showToast } from "@/components/toast";
 
 const PRIORITY_COLORS: Record<Priority, string> = {
   High: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800",
@@ -60,9 +61,10 @@ function InlineSelect<T extends string>({
   return (
     <select
       value={value || ""}
-      onClick={(e) => e.preventDefault()}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
       onChange={(e) => {
-        e.preventDefault();
+        e.stopPropagation();
         onChange(e.target.value as T);
       }}
       className={`appearance-none cursor-pointer px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wide border pr-5 bg-[length:12px] bg-[right_2px_center] bg-no-repeat ${
@@ -87,7 +89,7 @@ export function TaskCard({ task }: { task: Task }) {
 
   async function updateField(field: string, value: string) {
     const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-    await fetch(`/api/tasks/${task.id}`, {
+    const res = await fetch(`/api/tasks/${task.id}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -95,7 +97,13 @@ export function TaskCard({ task }: { task: Task }) {
       },
       body: JSON.stringify({ [field]: value }),
     });
+    if (!res.ok) {
+      showToast("Failed to update task", "error");
+      return null;
+    }
+    const data = await res.json();
     router.refresh();
+    return data;
   }
 
   function handlePriorityChange(val: Priority) {
@@ -103,9 +111,15 @@ export function TaskCard({ task }: { task: Task }) {
     updateField("priority", val);
   }
 
-  function handleStatusChange(val: Status) {
+  async function handleStatusChange(val: Status) {
     setStatus(val);
-    updateField("status", val);
+    const data = await updateField("status", val);
+    if (data?.nextOccurrence) {
+      showToast(
+        `Completed! Next occurrence scheduled.`,
+        "info"
+      );
+    }
   }
 
   return (
@@ -140,6 +154,12 @@ export function TaskCard({ task }: { task: Task }) {
               </span>
             )}
             <DueDateLabel dueDate={task.dueDate} status={status} />
+            {task.frequency && task.frequency !== "One-time" && (
+              <span className="inline-flex items-center gap-1 text-xs text-neutral-400">
+                <Repeat className="w-3 h-3" />
+                {task.frequency}
+              </span>
+            )}
             {task.costEstimate !== null && (
               <span className="inline-flex items-center gap-1 text-xs text-neutral-500">
                 <DollarSign className="w-3 h-3" />
