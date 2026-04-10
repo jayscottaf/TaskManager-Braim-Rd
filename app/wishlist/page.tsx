@@ -284,11 +284,17 @@ export default function WishListPage() {
           const r = Math.round((value / diy) * 100);
           next.diyRoi = String(r);
           next.diyRoiRating = roiRating(r);
+        } else {
+          next.diyRoi = "";
+          next.diyRoiRating = "";
         }
         if (hired > 0) {
           const r = Math.round((value / hired) * 100);
           next.hiredRoi = String(r);
           next.hiredRoiRating = roiRating(r);
+        } else {
+          next.hiredRoi = "";
+          next.hiredRoiRating = "";
         }
       }
       return next;
@@ -513,7 +519,11 @@ export default function WishListPage() {
                 <p className="text-lg font-bold text-neutral-950 dark:text-neutral-50">
                   {selectedItem.diyCost != null ? `$${selectedItem.diyCost.toLocaleString()}` : "—"}
                 </p>
-                <RoiBadge rating={selectedItem.diyRoiRating} roi={selectedItem.diyRoi} size="sm" />
+                {selectedItem.diyCost != null ? (
+                  <RoiBadge rating={selectedItem.diyRoiRating} roi={selectedItem.diyRoi} size="sm" />
+                ) : (
+                  <p className="text-[10px] text-neutral-400">Edit to add cost</p>
+                )}
                 {selectedItem.diyDifficulty && (
                   <p className={`text-[10px] font-semibold mt-1 ${selectedItem.diyDifficulty === "Easy" ? "text-emerald-600" : selectedItem.diyDifficulty === "Moderate" ? "text-amber-600" : selectedItem.diyDifficulty === "Hard" ? "text-red-600" : "text-neutral-900 dark:text-neutral-100"}`}>
                     {selectedItem.diyDifficulty === "Pro Only" ? "⚠️ Pro Only" : selectedItem.diyDifficulty + " DIY"}
@@ -525,7 +535,11 @@ export default function WishListPage() {
                 <p className="text-lg font-bold text-neutral-950 dark:text-neutral-50">
                   {selectedItem.hiredCost != null ? `$${selectedItem.hiredCost.toLocaleString()}` : "—"}
                 </p>
-                <RoiBadge rating={selectedItem.hiredRoiRating} roi={selectedItem.hiredRoi} size="sm" />
+                {selectedItem.hiredCost != null ? (
+                  <RoiBadge rating={selectedItem.hiredRoiRating} roi={selectedItem.hiredRoi} size="sm" />
+                ) : (
+                  <p className="text-[10px] text-neutral-400">Edit to add cost</p>
+                )}
               </div>
             </div>
 
