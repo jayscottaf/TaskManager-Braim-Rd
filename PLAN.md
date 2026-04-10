@@ -288,3 +288,123 @@ APP_SECRET=<random-string>          # Shared secret for API auth
 11. Receive daily digest on Telegram via OpenClaw
 12. Send photo via Telegram → task auto-created in Notion with AI classification
 13. Calendar view — tasks on correct dates, date ranges span multiple days
+
+---
+
+## Future Plan: Reimagining OpenClaw as Capture + Concierge + Memory
+
+**Status:** Strategic plan, not yet implemented. Saved 2026-04-10.
+
+### The Insight
+
+Most home maintenance apps fail at data entry friction. The web app is great at *output* (lists, calendar, AI plans, ROI tracking) but every feature needs you to be in the app navigating screens. OpenClaw shouldn't be a duplicate of the web app in chat form — it should be the **always-on capture layer the web app can't be**. The web app is where you *think and plan*. OpenClaw is where you *react in the moment*.
+
+### Three Roles (Replaces the Current SKILL.md Framing)
+
+**Role 1 — The Capture Inbox (replaces "quick add")**
+- Voice-first capture: voice note → GPT-4o transcription → classify → task
+- Photo dumps: send 5 photos at once during a walk-around → 5 separate tasks
+- "Remind me when..." natural language → task with due date
+- Brain-dump mode: paragraph form → split into multiple tasks
+- Contractor quote capture: forward a text/photo → attach to relevant task or wish list item
+
+**Role 2 — The Proactive Concierge (replaces "daily digest" + "seasonal")**
+Send messages only when there's *signal*, not on a fixed cron. Silence is a feature. Target 3-5 messages per week max.
+
+| Trigger | Example message |
+|---------|-----------------|
+| Weather + outdoor task | "Rain Sunday — 'clean gutters' is due Saturday. Bump to Friday?" |
+| Cold snap incoming | "Temps dropping to 18°F Thursday. You haven't winterized the outdoor faucet yet." |
+| Lawn mowing weather window | "Dry and 65°F all weekend — perfect mowing window. You're due." |
+| Overdue bundling (weekly, not daily) | "3 tasks overdue this week. Roll them into Saturday?" |
+| Wish list spotlight (Sunday) | "💭 Belgium block driveway border. Best season: now. Hired $4,800, DIY $1,200 — save $3,600. Start it?" |
+| Seasonal arrival | "Pool opening window starts in 2 weeks. 4 prep tasks not on your calendar. Add them?" |
+| Stale wish list | "You haven't looked at 'replace front door' in 6 months. Still want it, archive, or schedule?" |
+
+**Role 3 — The Hands-Free Query Layer (entirely new)**
+Turn 2 years of accumulated data into queryable memory.
+- "what's overdue?"
+- "how much have I spent on the kitchen this year?"
+- "what's my wish list total?" → "$47,300 across 12 projects, $18,200 if you DIY everything"
+- "what color is the master bedroom?" → looks up paint tracker, returns Behr 3A60-3 + colorant formula
+- "what did I do last spring?" → completed tasks Apr-Jun previous year
+- "when did I last service the AC?"
+- "who painted the porch?" → contractor name from task notes
+
+### Strategic Differentiators (vs. competing apps)
+
+1. **Voice-first capture for home maintenance** — no competing app does this
+2. **Smart proactive layer** combining weather + season + your actual data (no IoT sensors needed)
+3. **Queryable home memory** — once seeded with a year of data, becomes your home's history
+4. **Wish list ROI integration in nudges** — combines "season is now" + ROI + DIY savings into one push
+
+### What OpenClaw Should NOT Be
+
+- Don't replicate the calendar (web app does this well)
+- Don't replicate full task editing (set status/priority/date — yes; multi-field forms — no)
+- Don't be a daily digest machine (be selective, earn your messages)
+- Don't try to fully replace the web app — they should feel like a team
+
+### Architecture
+
+```
+                  [Notion DBs]
+                       |
+        +--------------+--------------+
+        |              |              |
+   [Web App]      [OpenClaw]    [Vercel APIs]
+        |              |              |
+    Plan deeply    React fast    Shared logic
+    Browse data    Capture       AI endpoints
+    Detail edits   Query/recall  Weather/cron
+```
+
+OpenClaw should call the existing `/api/ai/plan-project`, `/api/tasks`, `/api/wishlist` endpoints rather than re-implementing logic. Single source of truth for ROI math, AI prompts, and schema. Schema changes propagate automatically. Future Postgres migration won't break OpenClaw.
+
+The only new dependency OpenClaw needs is a **weather API** (recommend National Weather Service — free, no key, US-only is fine for Saratoga Springs).
+
+### Roadmap (4 phases)
+
+**Phase 1 — Capture & Query (Week 1) — START HERE**
+1. Voice → task (Telegram voice → GPT-4o transcription → existing classify endpoint)
+2. Photo → task (use web app's `/api/ai/classify` instead of duplicating)
+3. Multi-task brain dump (split paragraphs into separate tasks)
+4. Query commands ("overdue?", "this week?", "wish list total?", "last AC service?")
+5. Quick status updates ("done: faucet" finds matching task and marks complete)
+
+**Phase 2 — Proactive Concierge (Week 2)**
+6. Weather watcher cron (daily, 1 batched message if actionable)
+7. Cold snap detector (first hard freeze vs. winterize tasks)
+8. Weekend window finder (dry/mild weekend → outdoor backlog)
+9. Bundled overdue digest (weekly, not daily — group with "schedule for Saturday?" prompt)
+
+**Phase 3 — Wish List & Memory (Week 3)**
+10. Weekly wish list spotlight (Sunday, picks current-season item with ROI/savings)
+11. Wish list quick capture ("wish: rebuild back deck" → calls plan-project API)
+12. Promote to task from chat ("start: belgium border")
+13. History queries ("kitchen costs this year?", "when did I paint the porch?")
+
+**Phase 4 — Polish (Week 4+)**
+14. Contractor quote attachment (forward → "attach to which task?")
+15. Paint tracker queries ("what color is master bedroom?")
+16. End-of-year summary (Jan 1: tasks completed, $ spent, wish list projects done, DIY savings)
+
+### Open Questions Before Implementation
+
+1. **Weather API** — NWS (recommended, US-only, no key) or OpenWeatherMap (1000/day free)?
+2. **OpenClaw scheduler** — Does OpenClaw have its own cron, or does Vercel need to trigger it?
+3. **Message budget** — Confirm 3-5 messages/week max (avoid notification fatigue)
+4. **Phase order** — Recommend Phase 1 first (high daily utility, builds foundation for Phase 2)
+5. **API access** — Does OpenClaw have `NEXT_PUBLIC_APP_SECRET` to call Vercel APIs?
+
+### Sources Used in Research
+
+- Predictive Maintenance 2026 (Kukun)
+- AI for Home Services (ServiceTitan)
+- Homeowner AI (HomeZada)
+- AI Weather Preparation Advisor (Taskade)
+- Proactive Future Rain Notifications with Home Assistant (Brent Saltzman)
+- 12 Best Home Maintenance Apps (HomeLight)
+- Home Maintenance Reminders pain points forum (HouseRepairTalk)
+- AI-Powered Telegram Task Assistant with Notion Integration (n8n)
+- New Home Maintenance Integration (Home Assistant Community)
