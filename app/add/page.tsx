@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -9,7 +9,7 @@ import { CameraCapture } from "@/components/camera-capture";
 import type { PhotoClassification } from "@/lib/ai";
 import type { Task } from "@/lib/types";
 
-export default function AddTaskPage() {
+function AddTaskContent() {
   const searchParams = useSearchParams();
 
   // Build prefill from URL params (from seasonal banner) or camera
@@ -46,6 +46,24 @@ export default function AddTaskPage() {
   }
 
   return (
+    <>
+      {/* Camera */}
+      <div className="px-5">
+        <CameraCapture onClassified={handleClassified} />
+      </div>
+
+      {/* Form */}
+      <TaskForm
+        mode="create"
+        key={prefill ? JSON.stringify(prefill) : "empty"}
+        task={prefill as Task | undefined}
+      />
+    </>
+  );
+}
+
+export default function AddTaskPage() {
+  return (
     <div className="flex flex-col gap-6 pt-6 pb-4 animate-fade-in">
       {/* Header */}
       <div className="flex items-center gap-3 px-5">
@@ -58,17 +76,9 @@ export default function AddTaskPage() {
         <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">Add Task</h1>
       </div>
 
-      {/* Camera */}
-      <div className="px-5">
-        <CameraCapture onClassified={handleClassified} />
-      </div>
-
-      {/* Form */}
-      <TaskForm
-        mode="create"
-        key={prefill ? JSON.stringify(prefill) : "empty"}
-        task={prefill as Task | undefined}
-      />
+      <Suspense fallback={<div className="px-5 py-8 text-center text-neutral-400 text-sm">Loading...</div>}>
+        <AddTaskContent />
+      </Suspense>
     </div>
   );
 }
