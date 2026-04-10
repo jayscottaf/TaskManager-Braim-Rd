@@ -11,23 +11,39 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import type { Status, Priority, Area } from "@/lib/types";
 
 interface PageProps {
-  searchParams: Promise<{ status?: string; priority?: string; area?: string }>;
+  searchParams: Promise<{ status?: string; priority?: string; area?: string; range?: string }>;
 }
 
 async function TaskList({
   status,
   priority,
   area,
+  range,
 }: {
   status?: Status;
   priority?: Priority;
   area?: Area;
+  range?: string;
 }) {
   let tasks;
   try {
     const allTasks = await getTasks({ status, priority, area });
     // Hide completed tasks from dashboard unless explicitly filtered to Completed
     tasks = status === "Completed" ? allTasks : allTasks.filter((t) => t.status !== "Completed");
+
+    // Apply time range filter: show overdue tasks always + tasks due within range
+    const rangeDays = parseInt(range || "30", 10);
+    if (rangeDays > 0) {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const cutoff = new Date(now);
+      cutoff.setDate(cutoff.getDate() + rangeDays);
+      tasks = tasks.filter((t) => {
+        if (!t.dueDate) return true; // No due date = always show
+        const due = new Date(t.dueDate.start);
+        return due <= cutoff; // Includes overdue (due < now) and due within range
+      });
+    }
   } catch (err: unknown) {
     const e = err as { code?: string; status?: number; message?: string };
     return (
@@ -115,6 +131,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           status={params.status as Status | undefined}
           priority={params.priority as Priority | undefined}
           area={params.area as Area | undefined}
+          range={params.range}
         />
       </Suspense>
 

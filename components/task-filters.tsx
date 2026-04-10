@@ -3,6 +3,15 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { STATUSES, PRIORITIES, AREAS } from "@/lib/types";
 
+const TIME_RANGES = [
+  { label: "7 Days", value: "7" },
+  { label: "30 Days", value: "30" },
+  { label: "90 Days", value: "90" },
+  { label: "All", value: "" },
+] as const;
+
+export const DEFAULT_RANGE = "30";
+
 export function TaskFilters() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -10,6 +19,7 @@ export function TaskFilters() {
   const activeStatus = searchParams.get("status") || "";
   const activePriority = searchParams.get("priority") || "";
   const activeArea = searchParams.get("area") || "";
+  const activeRange = searchParams.get("range") ?? DEFAULT_RANGE;
 
   function setFilter(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -23,6 +33,17 @@ export function TaskFilters() {
 
   return (
     <div className="flex flex-col gap-2 px-5">
+      {/* Time range filter */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+        {TIME_RANGES.map((r) => (
+          <FilterChip
+            key={r.value}
+            label={r.label}
+            active={activeRange === r.value}
+            onClick={() => setFilter("range", r.value)}
+          />
+        ))}
+      </div>
       {/* Status filter */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
         <FilterChip
