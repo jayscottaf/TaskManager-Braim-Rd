@@ -1,7 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { Client } from "@notionhq/client";
+import { checkAuth } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = checkAuth(request);
+  if (authError) return authError;
+
   const apiKey = process.env.NOTION_API_KEY;
   const databaseId = process.env.NOTION_DATABASE_ID;
 
@@ -24,8 +28,6 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       database: title,
-      databaseId: databaseId.slice(0, 8) + "...",
-      apiKeyPrefix: apiKey.slice(0, 12) + "...",
     });
   } catch (err: unknown) {
     const e = err as { code?: string; status?: number; message?: string };
@@ -34,8 +36,6 @@ export async function GET() {
       error: e.message ?? "Unknown error",
       code: e.code,
       status: e.status,
-      databaseId: databaseId.slice(0, 8) + "...",
-      apiKeyPrefix: apiKey.slice(0, 12) + "...",
     });
   }
 }

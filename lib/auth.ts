@@ -10,9 +10,8 @@ export function checkAuth(request: NextRequest): NextResponse | null {
   if (!secret) return null; // No secret configured = auth disabled
 
   const headerSecret = request.headers.get("x-app-secret");
-  const paramSecret = request.nextUrl.searchParams.get("secret");
 
-  if (headerSecret === secret || paramSecret === secret) {
+  if (headerSecret === secret) {
     return null; // Authorized
   }
 
