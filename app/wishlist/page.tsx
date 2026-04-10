@@ -8,6 +8,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { WishListItem } from "@/lib/wishlist";
+import { getActiveCost, getActiveRoi, getActiveRoiRating } from "@/lib/wishlist";
 import type { WishListPlan } from "@/lib/ai";
 import { ProjectPlanner } from "@/components/project-planner";
 import { CostSummary } from "@/components/cost-summary";

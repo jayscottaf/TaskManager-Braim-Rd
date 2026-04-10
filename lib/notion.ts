@@ -142,9 +142,23 @@ export async function getTasks(options?: GetTasksOptions): Promise<Task[]> {
   }
 
   const response = await notion.databases.query(query);
-  return response.results
+  const tasks = response.results
     .filter((p): p is PageObjectResponse => "properties" in p)
     .map(pageToTask);
+
+  // Sort: In Progress first, then by due date ascending, then priority High > Medium > Low
+  const priRank: Record<string, number> = { High: 3, Medium: 2, Low: 1 };
+  const statusRank: Record<string, number> = { "In Progress": 0, "Not Started": 1, "On Hold": 2, Completed: 3 };
+  tasks.sort((a, b) => {
+    const sa = statusRank[a.status] ?? 1;
+    const sb = statusRank[b.status] ?? 1;
+    if (sa !== sb) return sa - sb;
+    const da = a.dueDate?.start || "9999";
+    const db = b.dueDate?.start || "9999";
+    if (da !== db) return da < db ? -1 : 1;
+    return (priRank[b.priority ?? ""] ?? 0) - (priRank[a.priority ?? ""] ?? 0);
+  });
+  return tasks;
 }
 
 export async function getTask(id: string): Promise<Task> {

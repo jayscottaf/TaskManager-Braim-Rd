@@ -1,4 +1,5 @@
 import type { WishListItem } from "@/lib/wishlist";
+import { getActiveCost, getActiveRoi } from "@/lib/wishlist";
 
 interface CostSummaryProps {
   items: WishListItem[];
@@ -9,12 +10,12 @@ export function CostSummary({ items, selectedIds }: CostSummaryProps) {
   const activeItems = items.filter((i) => i._status !== "Archived");
   const selectedItems = activeItems.filter((i) => selectedIds.has(i.id));
 
-  const totalCost = activeItems.reduce((sum, i) => sum + (i.estimatedCost || 0), 0);
-  const selectedCost = selectedItems.reduce((sum, i) => sum + (i.estimatedCost || 0), 0);
+  const totalCost = activeItems.reduce((sum, i) => sum + (getActiveCost(i) || 0), 0);
+  const selectedCost = selectedItems.reduce((sum, i) => sum + (getActiveCost(i) || 0), 0);
 
   const roisForAvg = (selectedItems.length > 0 ? selectedItems : activeItems)
-    .filter((i) => i.roi != null)
-    .map((i) => i.roi!);
+    .filter((i) => getActiveRoi(i) != null)
+    .map((i) => getActiveRoi(i)!);
   const avgRoi = roisForAvg.length > 0
     ? Math.round(roisForAvg.reduce((a, b) => a + b, 0) / roisForAvg.length)
     : null;

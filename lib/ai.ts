@@ -238,10 +238,14 @@ export interface WishListPlan {
   project: string;
   description: string;
   plan: string;
-  estimatedCost: number;
+  diyCost: number;
+  hiredCost: number;
   valueAdd: number;
-  roi: number;
-  roiRating: string;
+  diyRoi: number;
+  hiredRoi: number;
+  diyRoiRating: string;
+  hiredRoiRating: string;
+  diyDifficulty: string;
   category: string;
   priority: string;
   timeline: string;
@@ -263,10 +267,14 @@ Return a JSON object with:
 - "project": Clean, concise project name (e.g., "Belgium Block Driveway Border")
 - "description": 1-2 sentence summary of the project
 - "plan": Detailed step-by-step plan. Each step on its own line, numbered. Include materials needed, key considerations, and approximate timeline for each step. This should be detailed enough that a homeowner could use it to get contractor quotes.
-- "estimatedCost": Realistic total cost in USD for the Saratoga Springs, NY area. Include both materials and labor. Use current 2024-2026 pricing.
+- "diyCost": Cost in USD if the homeowner does it themselves (materials, tool rentals, permits — no labor). Use current 2024-2026 Saratoga Springs, NY pricing.
+- "hiredCost": Cost in USD if hiring a contractor (materials + labor + markup). Use current 2024-2026 Saratoga Springs, NY pricing.
 - "valueAdd": Estimated increase in home resale value from this project. Be realistic — not all projects add value equal to their cost.
-- "roi": ROI percentage calculated as (valueAdd / estimatedCost) × 100, rounded to nearest integer
-- "roiRating": One of "High ROI" (roi > 100), "Good" (roi 50-100), "Low" (roi < 50), or "Lifestyle" (project primarily improves quality of life, not resale value — e.g., hot tub, game room)
+- "diyRoi": ROI percentage calculated as (valueAdd / diyCost) × 100, rounded to nearest integer
+- "hiredRoi": ROI percentage calculated as (valueAdd / hiredCost) × 100, rounded to nearest integer
+- "diyRoiRating": One of "High ROI" (diyRoi > 100), "Good" (diyRoi 50-100), "Low" (diyRoi < 50), or "Lifestyle" (project primarily improves quality of life, not resale value)
+- "hiredRoiRating": One of "High ROI" (hiredRoi > 100), "Good" (hiredRoi 50-100), "Low" (hiredRoi < 50), or "Lifestyle"
+- "diyDifficulty": One of "Easy" (basic tools, no special skills), "Moderate" (some experience needed, weekend project), "Hard" (significant skill/time required), "Pro Only" (requires licensed professional or specialized equipment)
 - "category": One of "Landscaping", "Driveway", "Interior", "Exterior", "Roofing", "Plumbing", "Electrical", "General"
 - "priority": "High", "Medium", or "Low" based on impact and urgency
 - "timeline": One of "This Year", "Next Year", "2+ Years", "Someday"
@@ -294,10 +302,14 @@ Return ONLY the JSON object, no other text.`;
     project: description.slice(0, 60),
     description: description,
     plan: "Could not generate a plan. Please try again with more detail.",
-    estimatedCost: 0,
+    diyCost: 0,
+    hiredCost: 0,
     valueAdd: 0,
-    roi: 0,
-    roiRating: "Low",
+    diyRoi: 0,
+    hiredRoi: 0,
+    diyRoiRating: "Low",
+    hiredRoiRating: "Low",
+    diyDifficulty: "Moderate",
     category: "General",
     priority: "Medium",
     timeline: "Someday",

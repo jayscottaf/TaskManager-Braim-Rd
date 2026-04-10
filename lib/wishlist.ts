@@ -11,10 +11,15 @@ export interface WishListItem {
   project: string;
   description: string;
   aiPlan: string;
-  estimatedCost: number | null;
+  diyCost: number | null;
+  hiredCost: number | null;
   valueAdd: number | null;
-  roi: number | null;
-  roiRating: string | null;
+  diyRoi: number | null;
+  hiredRoi: number | null;
+  diyRoiRating: string | null;
+  hiredRoiRating: string | null;
+  diyDifficulty: string | null;
+  costMode: string; // "DIY" | "Hired Out"
   category: string | null;
   priority: string | null;
   timeline: string | null;
@@ -28,10 +33,15 @@ export interface CreateWishListInput {
   project: string;
   description?: string;
   aiPlan?: string;
-  estimatedCost?: number;
+  diyCost?: number;
+  hiredCost?: number;
   valueAdd?: number;
-  roi?: number;
-  roiRating?: string;
+  diyRoi?: number;
+  hiredRoi?: number;
+  diyRoiRating?: string;
+  hiredRoiRating?: string;
+  diyDifficulty?: string;
+  costMode?: string;
   category?: string;
   priority?: string;
   timeline?: string;
@@ -41,21 +51,37 @@ export interface CreateWishListInput {
 }
 
 // Database schema definition
+const ROI_RATING_OPTIONS = [
+  { name: "High ROI" },
+  { name: "Good" },
+  { name: "Low" },
+  { name: "Lifestyle" },
+];
+
 const DB_PROPERTIES = {
   Project: { title: {} },
   Description: { rich_text: {} },
   "AI Plan": { rich_text: {} },
-  "Estimated Cost": { number: { format: "dollar" as const } },
+  "DIY Cost": { number: { format: "dollar" as const } },
+  "Hired Cost": { number: { format: "dollar" as const } },
   "Value Add": { number: { format: "dollar" as const } },
-  ROI: { number: { format: "percent" as const } },
-  "ROI Rating": {
+  "DIY ROI": { number: { format: "percent" as const } },
+  "Hired ROI": { number: { format: "percent" as const } },
+  "DIY ROI Rating": { select: { options: ROI_RATING_OPTIONS } },
+  "Hired ROI Rating": { select: { options: ROI_RATING_OPTIONS } },
+  "DIY Difficulty": {
     select: {
       options: [
-        { name: "High ROI" },
-        { name: "Good" },
-        { name: "Low" },
-        { name: "Lifestyle" },
+        { name: "Easy" },
+        { name: "Moderate" },
+        { name: "Hard" },
+        { name: "Pro Only" },
       ],
+    },
+  },
+  "Cost Mode": {
+    select: {
+      options: [{ name: "DIY" }, { name: "Hired Out" }],
     },
   },
   Category: {
@@ -205,21 +231,30 @@ function pageToItem(page: PageObjectResponse): WishListItem {
     if (prop?.type === "select") return prop.select?.name ?? null;
     return null;
   }
-  function getUrl(name: string): string | null {
-    const prop = p[name];
-    if (prop?.type === "url") return prop.url;
-    return null;
+
+  // Notion percent is 0-1; convert to 0-100 for display
+  function getPercent(name: string): number | null {
+    const raw = getNumber(name);
+    return raw != null ? Math.round(raw * 100) : null;
   }
+
+  // Backward compat: old items only have "Estimated Cost" — map to diyCost
+  const diyCost = getNumber("DIY Cost") ?? getNumber("Estimated Cost");
 
   return {
     id: page.id,
     project: getTitle(),
     description: getRichText("Description"),
     aiPlan: getRichText("AI Plan"),
-    estimatedCost: getNumber("Estimated Cost"),
+    diyCost,
+    hiredCost: getNumber("Hired Cost"),
     valueAdd: getNumber("Value Add"),
-    roi: getNumber("ROI") != null ? Math.round(getNumber("ROI")! * 100) : null,
-    roiRating: getSelect("ROI Rating"),
+    diyRoi: getPercent("DIY ROI") ?? (getNumber("ROI") != null ? Math.round(getNumber("ROI")! * 100) : null),
+    hiredRoi: getPercent("Hired ROI"),
+    diyRoiRating: getSelect("DIY ROI Rating") ?? getSelect("ROI Rating"),
+    hiredRoiRating: getSelect("Hired ROI Rating"),
+    diyDifficulty: getSelect("DIY Difficulty"),
+    costMode: getSelect("Cost Mode") || "DIY",
     category: getSelect("Category"),
     priority: getSelect("Priority"),
     timeline: getSelect("Timeline"),
@@ -270,10 +305,15 @@ export async function createWishListItem(input: CreateWishListInput): Promise<st
 
   if (input.description) properties.Description = { rich_text: richTextChunks(input.description) };
   if (input.aiPlan) properties["AI Plan"] = { rich_text: richTextChunks(input.aiPlan) };
-  if (input.estimatedCost != null) properties["Estimated Cost"] = { number: input.estimatedCost };
+  if (input.diyCost != null) properties["DIY Cost"] = { number: input.diyCost };
+  if (input.hiredCost != null) properties["Hired Cost"] = { number: input.hiredCost };
   if (input.valueAdd != null) properties["Value Add"] = { number: input.valueAdd };
-  if (input.roi != null) properties.ROI = { number: input.roi / 100 }; // Notion percent format is 0-1
-  if (input.roiRating) properties["ROI Rating"] = { select: { name: input.roiRating } };
+  if (input.diyRoi != null) properties["DIY ROI"] = { number: input.diyRoi / 100 }; // Notion percent is 0-1
+  if (input.hiredRoi != null) properties["Hired ROI"] = { number: input.hiredRoi / 100 };
+  if (input.diyRoiRating) properties["DIY ROI Rating"] = { select: { name: input.diyRoiRating } };
+  if (input.hiredRoiRating) properties["Hired ROI Rating"] = { select: { name: input.hiredRoiRating } };
+  if (input.diyDifficulty) properties["DIY Difficulty"] = { select: { name: input.diyDifficulty } };
+  if (input.costMode) properties["Cost Mode"] = { select: { name: input.costMode } };
   if (input.category) properties.Category = { select: { name: input.category } };
   if (input.priority) properties.Priority = { select: { name: input.priority } };
   if (input.timeline) properties.Timeline = { select: { name: input.timeline } };
@@ -322,10 +362,15 @@ export async function updateWishListItem(
   if (updates.project !== undefined) properties.Project = { title: [{ text: { content: updates.project } }] };
   if (updates.description !== undefined) properties.Description = { rich_text: updates.description ? richTextChunks(updates.description) : [] };
   if (updates.aiPlan !== undefined) properties["AI Plan"] = { rich_text: updates.aiPlan ? richTextChunks(updates.aiPlan) : [] };
-  if (updates.estimatedCost !== undefined) properties["Estimated Cost"] = { number: updates.estimatedCost ?? null };
+  if (updates.diyCost !== undefined) properties["DIY Cost"] = { number: updates.diyCost ?? null };
+  if (updates.hiredCost !== undefined) properties["Hired Cost"] = { number: updates.hiredCost ?? null };
   if (updates.valueAdd !== undefined) properties["Value Add"] = { number: updates.valueAdd ?? null };
-  if (updates.roi !== undefined) properties.ROI = { number: updates.roi != null ? updates.roi / 100 : null };
-  if (updates.roiRating !== undefined) properties["ROI Rating"] = updates.roiRating ? { select: { name: updates.roiRating } } : { select: null };
+  if (updates.diyRoi !== undefined) properties["DIY ROI"] = { number: updates.diyRoi != null ? updates.diyRoi / 100 : null };
+  if (updates.hiredRoi !== undefined) properties["Hired ROI"] = { number: updates.hiredRoi != null ? updates.hiredRoi / 100 : null };
+  if (updates.diyRoiRating !== undefined) properties["DIY ROI Rating"] = updates.diyRoiRating ? { select: { name: updates.diyRoiRating } } : { select: null };
+  if (updates.hiredRoiRating !== undefined) properties["Hired ROI Rating"] = updates.hiredRoiRating ? { select: { name: updates.hiredRoiRating } } : { select: null };
+  if (updates.diyDifficulty !== undefined) properties["DIY Difficulty"] = updates.diyDifficulty ? { select: { name: updates.diyDifficulty } } : { select: null };
+  if (updates.costMode !== undefined) properties["Cost Mode"] = updates.costMode ? { select: { name: updates.costMode } } : { select: null };
   if (updates.category !== undefined) properties.Category = updates.category ? { select: { name: updates.category } } : { select: null };
   if (updates.priority !== undefined) properties.Priority = updates.priority ? { select: { name: updates.priority } } : { select: null };
   if (updates.timeline !== undefined) properties.Timeline = updates.timeline ? { select: { name: updates.timeline } } : { select: null };
@@ -347,4 +392,18 @@ export async function updateWishListItem(
 
 export async function deleteWishListItem(pageId: string): Promise<void> {
   await notion.pages.update({ page_id: pageId, archived: true });
+}
+
+// --- Cost-mode helpers: return the active value based on item.costMode ---
+
+export function getActiveCost(item: WishListItem): number | null {
+  return item.costMode === "Hired Out" ? item.hiredCost : item.diyCost;
+}
+
+export function getActiveRoi(item: WishListItem): number | null {
+  return item.costMode === "Hired Out" ? item.hiredRoi : item.diyRoi;
+}
+
+export function getActiveRoiRating(item: WishListItem): string | null {
+  return item.costMode === "Hired Out" ? item.hiredRoiRating : item.diyRoiRating;
 }
