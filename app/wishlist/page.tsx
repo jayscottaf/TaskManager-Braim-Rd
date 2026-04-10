@@ -769,7 +769,7 @@ export default function WishListPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       {item.category && <span className="text-xs text-neutral-500">{item.category}</span>}
                       {gc(item) > 0 && <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">${gc(item).toLocaleString()}</span>}
-                      <RoiBadge rating={item.costMode === "Hired Out" ? item.hiredRoiRating : item.diyRoiRating} roi={item.costMode === "Hired Out" ? item.hiredRoi : item.diyRoi} />
+                      {gc(item) > 0 && <RoiBadge rating={item.costMode === "Hired Out" ? item.hiredRoiRating : item.diyRoiRating} roi={item.costMode === "Hired Out" ? item.hiredRoi : item.diyRoi} />}
                       <span className="text-[10px] text-neutral-400">{item.costMode === "Hired Out" ? "👷" : "🔧"}</span>
                       {item.bestSeason && <span className="text-xs text-neutral-400">{SEASON_ICONS[item.bestSeason] || ""} {item.bestSeason}</span>}
                     </div>

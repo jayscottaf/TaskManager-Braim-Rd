@@ -14,7 +14,7 @@ export function CostSummary({ items, selectedIds }: CostSummaryProps) {
   const selectedCost = selectedItems.reduce((sum, i) => sum + (getActiveCost(i) || 0), 0);
 
   const roisForAvg = (selectedItems.length > 0 ? selectedItems : activeItems)
-    .filter((i) => getActiveRoi(i) != null)
+    .filter((i) => getActiveCost(i) != null && getActiveCost(i)! > 0 && getActiveRoi(i) != null)
     .map((i) => getActiveRoi(i)!);
   const avgRoi = roisForAvg.length > 0
     ? Math.round(roisForAvg.reduce((a, b) => a + b, 0) / roisForAvg.length)
