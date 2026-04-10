@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ClipboardList, Calendar, Plus, Heart, Store } from "lucide-react";
+import { ClipboardList, Calendar, Plus, Heart, Sparkles, Store } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Tasks", icon: ClipboardList, accent: false, action: null },
   { href: "/calendar", label: "Calendar", icon: Calendar, accent: false, action: null },
   { href: "/add", label: "Add", icon: Plus, accent: true, action: null },
   { href: "/wishlist", label: "Wish List", icon: Heart, accent: false, action: null },
+  { href: "#", label: "AI", icon: Sparkles, accent: false, action: "open-ai" },
   { href: "/store", label: "Store", icon: Store, accent: false, action: null },
 ] as const;
 

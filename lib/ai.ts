@@ -238,10 +238,14 @@ export interface WishListPlan {
   project: string;
   description: string;
   plan: string;
-  estimatedCost: number;
+  diyCost: number;
+  hiredCost: number;
   valueAdd: number;
-  roi: number;
-  roiRating: string;
+  diyRoi: number;
+  hiredRoi: number;
+  diyRoiRating: string;
+  hiredRoiRating: string;
+  diyDifficulty: string;
   category: string;
   priority: string;
   timeline: string;
@@ -262,15 +266,19 @@ HOMEOWNER'S DESCRIPTION: "${description}"
 Return a JSON object with:
 - "project": Clean, concise project name (e.g., "Belgium Block Driveway Border")
 - "description": 1-2 sentence summary of the project
-- "plan": Detailed step-by-step plan. Each step on its own line, numbered. Include materials needed, key considerations, and approximate timeline for each step. This should be detailed enough that a homeowner could use it to get contractor quotes.
-- "estimatedCost": Realistic total cost in USD for the Saratoga Springs, NY area. Include both materials and labor. Use current 2024-2026 pricing.
-- "valueAdd": Estimated increase in home resale value from this project. Be realistic — not all projects add value equal to their cost.
-- "roi": ROI percentage calculated as (valueAdd / estimatedCost) × 100, rounded to nearest integer
-- "roiRating": One of "High ROI" (roi > 100), "Good" (roi 50-100), "Low" (roi < 50), or "Lifestyle" (project primarily improves quality of life, not resale value — e.g., hot tub, game room)
+- "plan": Detailed step-by-step plan as a single string. Each step on its own line, numbered. Include materials needed, key considerations, and approximate timeline for each step.
+- "diyCost": Cost if the homeowner does all labor themselves (materials, tools, tool rentals only). Use current 2024-2026 pricing for the Saratoga Springs, NY area.
+- "hiredCost": Full contractor price including materials and labor for the Saratoga Springs, NY area. Use current 2024-2026 pricing.
+- "valueAdd": Estimated increase in home resale value from this project. Be realistic — not all projects add value equal to their cost. This is the same regardless of who does the work.
+- "diyRoi": ROI percentage for DIY calculated as (valueAdd / diyCost) × 100, rounded to nearest integer
+- "hiredRoi": ROI percentage for hired out calculated as (valueAdd / hiredCost) × 100, rounded to nearest integer
+- "diyRoiRating": Based on diyRoi — one of "High ROI" (roi > 100), "Good" (roi 50-100), "Low" (roi < 50), or "Lifestyle" (project primarily improves quality of life, not resale value)
+- "hiredRoiRating": Based on hiredRoi — same thresholds as above
+- "diyDifficulty": One of "Easy" (basic tools, anyone can do it — e.g., painting, simple landscaping), "Moderate" (some skill/experience needed — e.g., deck staining, basic tiling), "Hard" (experienced DIYer only — e.g., framing, concrete work), "Pro Only" (requires licensed contractor or specialized equipment — e.g., electrical panel, roofing, structural work)
 - "category": One of "Landscaping", "Driveway", "Interior", "Exterior", "Roofing", "Plumbing", "Electrical", "General"
 - "priority": "High", "Medium", or "Low" based on impact and urgency
 - "timeline": One of "This Year", "Next Year", "2+ Years", "Someday"
-- "bestSeason": One of "Spring", "Summer", "Fall", "Winter", "Any" — recommend the best time to do this project considering weather, contractor availability, and cost. Add a brief reason in parentheses, e.g., "Fall (lower contractor demand, cooler weather for outdoor work)"
+- "bestSeason": One of "Spring", "Summer", "Fall", "Winter", "Any" — recommend the best time considering weather, contractor availability, and cost. Add a brief reason in parentheses.
 
 Return ONLY the JSON object, no other text.`;
 
@@ -294,10 +302,14 @@ Return ONLY the JSON object, no other text.`;
     project: description.slice(0, 60),
     description: description,
     plan: "Could not generate a plan. Please try again with more detail.",
-    estimatedCost: 0,
+    diyCost: 0,
+    hiredCost: 0,
     valueAdd: 0,
-    roi: 0,
-    roiRating: "Low",
+    diyRoi: 0,
+    hiredRoi: 0,
+    diyRoiRating: "Low",
+    hiredRoiRating: "Low",
+    diyDifficulty: "Moderate",
     category: "General",
     priority: "Medium",
     timeline: "Someday",

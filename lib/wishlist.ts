@@ -11,10 +11,15 @@ export interface WishListItem {
   project: string;
   description: string;
   aiPlan: string;
-  estimatedCost: number | null;
+  diyCost: number | null;
+  hiredCost: number | null;
   valueAdd: number | null;
-  roi: number | null;
-  roiRating: string | null;
+  diyRoi: number | null;
+  hiredRoi: number | null;
+  diyRoiRating: string | null;
+  hiredRoiRating: string | null;
+  diyDifficulty: string | null;
+  costMode: string; // "DIY" | "Hired Out"
   category: string | null;
   priority: string | null;
   timeline: string | null;
@@ -24,14 +29,30 @@ export interface WishListItem {
   _status: string;
 }
 
+/** Helper: get the active cost/roi based on costMode */
+export function getActiveCost(item: WishListItem): number | null {
+  return item.costMode === "Hired Out" ? item.hiredCost : item.diyCost;
+}
+export function getActiveRoi(item: WishListItem): number | null {
+  return item.costMode === "Hired Out" ? item.hiredRoi : item.diyRoi;
+}
+export function getActiveRoiRating(item: WishListItem): string | null {
+  return item.costMode === "Hired Out" ? item.hiredRoiRating : item.diyRoiRating;
+}
+
 export interface CreateWishListInput {
   project: string;
   description?: string;
   aiPlan?: string;
-  estimatedCost?: number;
+  diyCost?: number;
+  hiredCost?: number;
   valueAdd?: number;
-  roi?: number;
-  roiRating?: string;
+  diyRoi?: number;
+  hiredRoi?: number;
+  diyRoiRating?: string;
+  hiredRoiRating?: string;
+  diyDifficulty?: string;
+  costMode?: string;
   category?: string;
   priority?: string;
   timeline?: string;
@@ -40,22 +61,38 @@ export interface CreateWishListInput {
   notes?: string;
 }
 
+const ROI_OPTIONS = [
+  { name: "High ROI" },
+  { name: "Good" },
+  { name: "Low" },
+  { name: "Lifestyle" },
+];
+
 // Database schema definition
 const DB_PROPERTIES = {
   Project: { title: {} },
   Description: { rich_text: {} },
   "AI Plan": { rich_text: {} },
-  "Estimated Cost": { number: { format: "dollar" as const } },
+  "DIY Cost": { number: { format: "dollar" as const } },
+  "Hired Cost": { number: { format: "dollar" as const } },
   "Value Add": { number: { format: "dollar" as const } },
-  ROI: { number: { format: "percent" as const } },
-  "ROI Rating": {
+  "DIY ROI": { number: { format: "percent" as const } },
+  "Hired ROI": { number: { format: "percent" as const } },
+  "DIY ROI Rating": { select: { options: ROI_OPTIONS } },
+  "Hired ROI Rating": { select: { options: ROI_OPTIONS } },
+  "DIY Difficulty": {
     select: {
       options: [
-        { name: "High ROI" },
-        { name: "Good" },
-        { name: "Low" },
-        { name: "Lifestyle" },
+        { name: "Easy" },
+        { name: "Moderate" },
+        { name: "Hard" },
+        { name: "Pro Only" },
       ],
+    },
+  },
+  "Cost Mode": {
+    select: {
+      options: [{ name: "DIY" }, { name: "Hired Out" }],
     },
   },
   Category: {
@@ -115,7 +152,6 @@ let cachedDbId: string | null = null;
 export async function getOrCreateDatabase(): Promise<string> {
   if (cachedDbId) return cachedDbId;
 
-  // Search for existing
   const children = await notion.blocks.children.list({
     block_id: FEATURES_PAGE_ID,
     page_size: 100,
@@ -137,7 +173,7 @@ export async function getOrCreateDatabase(): Promise<string> {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const missing: Record<string, any> = {};
         for (const [key, val] of Object.entries(DB_PROPERTIES)) {
-          if (key === "Project") continue; // title always exists
+          if (key === "Project") continue;
           if (!existing.has(key)) missing[key] = val;
         }
         if (Object.keys(missing).length > 0) {
@@ -151,7 +187,6 @@ export async function getOrCreateDatabase(): Promise<string> {
     }
   }
 
-  // Create new
   const db = await notion.databases.create({
     parent: { page_id: FEATURES_PAGE_ID },
     title: [{ text: { content: DB_TITLE } }],
@@ -177,9 +212,12 @@ function richTextChunks(text: string): { text: { content: string } }[] {
 function parsePhotos(raw: string): string[] {
   if (!raw) return [];
   try { return JSON.parse(raw); } catch { /* ignore */ }
-  // Legacy: single URL stored as plain text
   if (raw.startsWith("http")) return [raw];
   return [];
+}
+
+function pctToDisplay(raw: number | null): number | null {
+  return raw != null ? Math.round(raw * 100) : null;
 }
 
 function pageToItem(page: PageObjectResponse): WishListItem {
@@ -205,21 +243,26 @@ function pageToItem(page: PageObjectResponse): WishListItem {
     if (prop?.type === "select") return prop.select?.name ?? null;
     return null;
   }
-  function getUrl(name: string): string | null {
-    const prop = p[name];
-    if (prop?.type === "url") return prop.url;
-    return null;
-  }
+
+  // Backward compat: old items have "Estimated Cost"/"ROI"/"ROI Rating" instead of new fields
+  const diyCost = getNumber("DIY Cost") ?? getNumber("Estimated Cost");
+  const diyRoi = pctToDisplay(getNumber("DIY ROI") ?? getNumber("ROI"));
+  const diyRoiRating = getSelect("DIY ROI Rating") ?? getSelect("ROI Rating");
 
   return {
     id: page.id,
     project: getTitle(),
     description: getRichText("Description"),
     aiPlan: getRichText("AI Plan"),
-    estimatedCost: getNumber("Estimated Cost"),
+    diyCost,
+    hiredCost: getNumber("Hired Cost"),
     valueAdd: getNumber("Value Add"),
-    roi: getNumber("ROI") != null ? Math.round(getNumber("ROI")! * 100) : null,
-    roiRating: getSelect("ROI Rating"),
+    diyRoi,
+    hiredRoi: pctToDisplay(getNumber("Hired ROI")),
+    diyRoiRating,
+    hiredRoiRating: getSelect("Hired ROI Rating"),
+    diyDifficulty: getSelect("DIY Difficulty"),
+    costMode: getSelect("Cost Mode") || "DIY",
     category: getSelect("Category"),
     priority: getSelect("Priority"),
     timeline: getSelect("Timeline"),
@@ -270,15 +313,19 @@ export async function createWishListItem(input: CreateWishListInput): Promise<st
 
   if (input.description) properties.Description = { rich_text: richTextChunks(input.description) };
   if (input.aiPlan) properties["AI Plan"] = { rich_text: richTextChunks(input.aiPlan) };
-  if (input.estimatedCost != null) properties["Estimated Cost"] = { number: input.estimatedCost };
+  if (input.diyCost != null) properties["DIY Cost"] = { number: input.diyCost };
+  if (input.hiredCost != null) properties["Hired Cost"] = { number: input.hiredCost };
   if (input.valueAdd != null) properties["Value Add"] = { number: input.valueAdd };
-  if (input.roi != null) properties.ROI = { number: input.roi / 100 }; // Notion percent format is 0-1
-  if (input.roiRating) properties["ROI Rating"] = { select: { name: input.roiRating } };
+  if (input.diyRoi != null) properties["DIY ROI"] = { number: input.diyRoi / 100 };
+  if (input.hiredRoi != null) properties["Hired ROI"] = { number: input.hiredRoi / 100 };
+  if (input.diyRoiRating) properties["DIY ROI Rating"] = { select: { name: input.diyRoiRating } };
+  if (input.hiredRoiRating) properties["Hired ROI Rating"] = { select: { name: input.hiredRoiRating } };
+  if (input.diyDifficulty) properties["DIY Difficulty"] = { select: { name: input.diyDifficulty } };
+  if (input.costMode) properties["Cost Mode"] = { select: { name: input.costMode } };
   if (input.category) properties.Category = { select: { name: input.category } };
   if (input.priority) properties.Priority = { select: { name: input.priority } };
   if (input.timeline) properties.Timeline = { select: { name: input.timeline } };
   if (input.bestSeason) {
-    // Strip parenthetical reason, just keep the season name
     const season = input.bestSeason.split("(")[0].trim();
     properties["Best Season"] = { select: { name: season } };
   }
@@ -297,7 +344,6 @@ export async function updateWishListItem(
   pageId: string,
   updates: Partial<CreateWishListInput> & { _action?: string }
 ): Promise<void> {
-  // Handle archive/restore
   if (updates._action === "archive" || updates._action === "restore") {
     const statusValue = updates._action === "archive" ? "Archived" : "Active";
     try {
@@ -306,8 +352,7 @@ export async function updateWishListItem(
         properties: { _Status: { select: { name: statusValue } } },
       });
     } catch {
-      // _Status might not exist — ensure it, then retry
-      await getOrCreateDatabase(); // triggers schema sync
+      await getOrCreateDatabase();
       await notion.pages.update({
         page_id: pageId,
         properties: { _Status: { select: { name: statusValue } } },
@@ -322,10 +367,15 @@ export async function updateWishListItem(
   if (updates.project !== undefined) properties.Project = { title: [{ text: { content: updates.project } }] };
   if (updates.description !== undefined) properties.Description = { rich_text: updates.description ? richTextChunks(updates.description) : [] };
   if (updates.aiPlan !== undefined) properties["AI Plan"] = { rich_text: updates.aiPlan ? richTextChunks(updates.aiPlan) : [] };
-  if (updates.estimatedCost !== undefined) properties["Estimated Cost"] = { number: updates.estimatedCost ?? null };
+  if (updates.diyCost !== undefined) properties["DIY Cost"] = { number: updates.diyCost ?? null };
+  if (updates.hiredCost !== undefined) properties["Hired Cost"] = { number: updates.hiredCost ?? null };
   if (updates.valueAdd !== undefined) properties["Value Add"] = { number: updates.valueAdd ?? null };
-  if (updates.roi !== undefined) properties.ROI = { number: updates.roi != null ? updates.roi / 100 : null };
-  if (updates.roiRating !== undefined) properties["ROI Rating"] = updates.roiRating ? { select: { name: updates.roiRating } } : { select: null };
+  if (updates.diyRoi !== undefined) properties["DIY ROI"] = { number: updates.diyRoi != null ? updates.diyRoi / 100 : null };
+  if (updates.hiredRoi !== undefined) properties["Hired ROI"] = { number: updates.hiredRoi != null ? updates.hiredRoi / 100 : null };
+  if (updates.diyRoiRating !== undefined) properties["DIY ROI Rating"] = updates.diyRoiRating ? { select: { name: updates.diyRoiRating } } : { select: null };
+  if (updates.hiredRoiRating !== undefined) properties["Hired ROI Rating"] = updates.hiredRoiRating ? { select: { name: updates.hiredRoiRating } } : { select: null };
+  if (updates.diyDifficulty !== undefined) properties["DIY Difficulty"] = updates.diyDifficulty ? { select: { name: updates.diyDifficulty } } : { select: null };
+  if (updates.costMode !== undefined) properties["Cost Mode"] = updates.costMode ? { select: { name: updates.costMode } } : { select: null };
   if (updates.category !== undefined) properties.Category = updates.category ? { select: { name: updates.category } } : { select: null };
   if (updates.priority !== undefined) properties.Priority = updates.priority ? { select: { name: updates.priority } } : { select: null };
   if (updates.timeline !== undefined) properties.Timeline = updates.timeline ? { select: { name: updates.timeline } } : { select: null };
@@ -337,7 +387,7 @@ export async function updateWishListItem(
       properties["Best Season"] = { select: null };
     }
   }
-  if (updates.photos !== undefined) properties.Photos = { rich_text: updates.photos.length > 0 ? [{ text: { content: JSON.stringify(updates.photos) } }] : [] };
+  if (updates.photos !== undefined) properties.Photos = { rich_text: updates.photos && updates.photos.length > 0 ? [{ text: { content: JSON.stringify(updates.photos) } }] : [] };
   if (updates.notes !== undefined) properties.Notes = updates.notes ? { rich_text: [{ text: { content: updates.notes } }] } : { rich_text: [] };
 
   if (Object.keys(properties).length > 0) {

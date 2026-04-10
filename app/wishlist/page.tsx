@@ -79,10 +79,15 @@ export default function WishListPage() {
       project: plan.project,
       description: plan.description,
       aiPlan: plan.plan,
-      estimatedCost: String(plan.estimatedCost),
+      diyCost: String(plan.diyCost),
+      hiredCost: String(plan.hiredCost),
       valueAdd: String(plan.valueAdd),
-      roi: String(plan.roi),
-      roiRating: plan.roiRating,
+      diyRoi: String(plan.diyRoi),
+      hiredRoi: String(plan.hiredRoi),
+      diyRoiRating: plan.diyRoiRating,
+      hiredRoiRating: plan.hiredRoiRating,
+      diyDifficulty: plan.diyDifficulty,
+      costMode: "DIY",
       category: plan.category,
       priority: plan.priority,
       timeline: plan.timeline,
@@ -100,10 +105,15 @@ export default function WishListPage() {
         project: formData.project,
         description: formData.description || undefined,
         aiPlan: formData.aiPlan || undefined,
-        estimatedCost: formData.estimatedCost ? Number(formData.estimatedCost) : undefined,
+        diyCost: formData.diyCost ? Number(formData.diyCost) : undefined,
+        hiredCost: formData.hiredCost ? Number(formData.hiredCost) : undefined,
         valueAdd: formData.valueAdd ? Number(formData.valueAdd) : undefined,
-        roi: formData.roi ? Number(formData.roi) : undefined,
-        roiRating: formData.roiRating || undefined,
+        diyRoi: formData.diyRoi ? Number(formData.diyRoi) : undefined,
+        hiredRoi: formData.hiredRoi ? Number(formData.hiredRoi) : undefined,
+        diyRoiRating: formData.diyRoiRating || undefined,
+        hiredRoiRating: formData.hiredRoiRating || undefined,
+        diyDifficulty: formData.diyDifficulty || undefined,
+        costMode: formData.costMode || "DIY",
         category: formData.category || undefined,
         priority: formData.priority || undefined,
         timeline: formData.timeline || undefined,
@@ -134,10 +144,15 @@ export default function WishListPage() {
         project: formData.project,
         description: formData.description || "",
         aiPlan: formData.aiPlan || "",
-        estimatedCost: formData.estimatedCost ? Number(formData.estimatedCost) : null,
+        diyCost: formData.diyCost ? Number(formData.diyCost) : null,
+        hiredCost: formData.hiredCost ? Number(formData.hiredCost) : null,
         valueAdd: formData.valueAdd ? Number(formData.valueAdd) : null,
-        roi: formData.roi ? Number(formData.roi) : null,
-        roiRating: formData.roiRating || null,
+        diyRoi: formData.diyRoi ? Number(formData.diyRoi) : null,
+        hiredRoi: formData.hiredRoi ? Number(formData.hiredRoi) : null,
+        diyRoiRating: formData.diyRoiRating || null,
+        hiredRoiRating: formData.hiredRoiRating || null,
+        diyDifficulty: formData.diyDifficulty || null,
+        costMode: formData.costMode || "DIY",
         category: formData.category || null,
         priority: formData.priority || null,
         timeline: formData.timeline || null,
@@ -197,10 +212,17 @@ export default function WishListPage() {
     setSaving(true);
     setError(null);
     try {
+      const activeRating = item.costMode === "Hired Out" ? item.hiredRoiRating : item.diyRoiRating;
+      const activeRoi = item.costMode === "Hired Out" ? item.hiredRoi : item.diyRoi;
+      const activeCost = item.costMode === "Hired Out" ? item.hiredCost : item.diyCost;
       const notes = [
         item.description,
         item.aiPlan ? `\nAI Plan:\n${item.aiPlan}` : "",
-        item.roiRating ? `\nROI: ${item.roi ?? "?"}% (${item.roiRating})` : "",
+        `\nMode: ${item.costMode}`,
+        item.diyCost != null ? `\nDIY Cost: $${item.diyCost.toLocaleString()}` : "",
+        item.hiredCost != null ? `\nHired Cost: $${item.hiredCost.toLocaleString()}` : "",
+        activeRating ? `\nROI: ${activeRoi ?? "?"}% (${activeRating})` : "",
+        item.diyDifficulty ? `\nDIY Difficulty: ${item.diyDifficulty}` : "",
         item.bestSeason ? `\nBest Season: ${item.bestSeason}` : "",
         item.notes ? `\nNotes: ${item.notes}` : "",
       ].filter(Boolean).join("");
@@ -212,7 +234,7 @@ export default function WishListPage() {
         area: CATEGORY_TO_AREA[item.category || "General"] || "Exterior",
         type: [CATEGORY_TO_TYPE[item.category || "General"] || "General Repair"],
         frequency: "One-time",
-        costEstimate: item.estimatedCost || 0,
+        costEstimate: activeCost || 0,
         dueDate: { start: promoteDate, ...(promoteEndDate ? { end: promoteEndDate } : {}) },
         notes: notes.slice(0, 2000),
       };
@@ -235,26 +257,38 @@ export default function WishListPage() {
   }
 
   // Sorted items
+  const gc = (i: WishListItem) => (i.costMode === "Hired Out" ? i.hiredCost : i.diyCost) || 0;
+  const gr = (i: WishListItem) => (i.costMode === "Hired Out" ? i.hiredRoi : i.diyRoi) || 0;
   const sortedItems = [...items].sort((a, b) => {
-    if (sortBy === "cost") return (b.estimatedCost || 0) - (a.estimatedCost || 0);
-    if (sortBy === "roi") return (b.roi || 0) - (a.roi || 0);
+    if (sortBy === "cost") return gc(b) - gc(a);
+    if (sortBy === "roi") return gr(b) - gr(a);
     const priOrder = { High: 3, Medium: 2, Low: 1 };
     return (priOrder[b.priority as keyof typeof priOrder] || 0) - (priOrder[a.priority as keyof typeof priOrder] || 0);
   });
 
   const inputClass = "w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow";
 
+  function roiRating(roi: number): string {
+    return roi > 100 ? "High ROI" : roi >= 50 ? "Good" : roi > 0 ? "Low" : "Lifestyle";
+  }
+
   function set(key: string, val: string) {
     setFormData((prev) => {
       const next = { ...prev, [key]: val };
-      // Auto-recalculate ROI when cost or value add changes
-      if (key === "estimatedCost" || key === "valueAdd") {
-        const cost = Number(key === "estimatedCost" ? val : next.estimatedCost) || 0;
+      // Auto-recalculate BOTH ROIs when any cost or value add changes
+      if (key === "diyCost" || key === "hiredCost" || key === "valueAdd") {
+        const diy = Number(key === "diyCost" ? val : next.diyCost) || 0;
+        const hired = Number(key === "hiredCost" ? val : next.hiredCost) || 0;
         const value = Number(key === "valueAdd" ? val : next.valueAdd) || 0;
-        if (cost > 0) {
-          const roi = Math.round((value / cost) * 100);
-          next.roi = String(roi);
-          next.roiRating = roi > 100 ? "High ROI" : roi >= 50 ? "Good" : roi > 0 ? "Low" : "Lifestyle";
+        if (diy > 0) {
+          const r = Math.round((value / diy) * 100);
+          next.diyRoi = String(r);
+          next.diyRoiRating = roiRating(r);
+        }
+        if (hired > 0) {
+          const r = Math.round((value / hired) * 100);
+          next.hiredRoi = String(r);
+          next.hiredRoiRating = roiRating(r);
         }
       }
       return next;
@@ -278,27 +312,44 @@ export default function WishListPage() {
         </div>
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Est. Cost</label>
-            <input type="number" value={formData.estimatedCost || ""} onChange={(e) => set("estimatedCost", e.target.value)} min="0" className={inputClass} />
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">DIY Cost</label>
+            <input type="number" value={formData.diyCost || ""} onChange={(e) => set("diyCost", e.target.value)} min="0" className={inputClass} />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Hired Cost</label>
+            <input type="number" value={formData.hiredCost || ""} onChange={(e) => set("hiredCost", e.target.value)} min="0" className={inputClass} />
           </div>
           <div>
             <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Value Add</label>
             <input type="number" value={formData.valueAdd || ""} onChange={(e) => set("valueAdd", e.target.value)} min="0" className={inputClass} />
           </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">ROI %</label>
-            <input type="number" value={formData.roi || ""} onChange={(e) => set("roi", e.target.value)} className={inputClass} />
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">DIY ROI</label>
+            <input type="text" value={formData.diyRoi ? `${formData.diyRoi}%` : ""} readOnly className={`${inputClass} bg-neutral-50 dark:bg-neutral-850 text-neutral-400`} />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Hired ROI</label>
+            <input type="text" value={formData.hiredRoi ? `${formData.hiredRoi}%` : ""} readOnly className={`${inputClass} bg-neutral-50 dark:bg-neutral-850 text-neutral-400`} />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">DIY Difficulty</label>
+            <select value={formData.diyDifficulty || ""} onChange={(e) => set("diyDifficulty", e.target.value)} className={inputClass}>
+              <option value="">Select...</option>
+              <option value="Easy">Easy</option>
+              <option value="Moderate">Moderate</option>
+              <option value="Hard">Hard</option>
+              <option value="Pro Only">Pro Only</option>
+            </select>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">ROI Rating</label>
-            <select value={formData.roiRating || ""} onChange={(e) => set("roiRating", e.target.value)} className={inputClass}>
-              <option value="">Select...</option>
-              <option value="High ROI">High ROI (&gt;100%)</option>
-              <option value="Good">Good (50-100%)</option>
-              <option value="Low">Low (&lt;50%)</option>
-              <option value="Lifestyle">Lifestyle</option>
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Cost Mode</label>
+            <select value={formData.costMode || "DIY"} onChange={(e) => set("costMode", e.target.value)} className={inputClass}>
+              <option value="DIY">DIY</option>
+              <option value="Hired Out">Hired Out</option>
             </select>
           </div>
           <div>
@@ -390,10 +441,15 @@ export default function WishListPage() {
                 project: selectedItem.project,
                 description: selectedItem.description || "",
                 aiPlan: selectedItem.aiPlan || "",
-                estimatedCost: selectedItem.estimatedCost != null ? String(selectedItem.estimatedCost) : "",
+                diyCost: selectedItem.diyCost != null ? String(selectedItem.diyCost) : "",
+                hiredCost: selectedItem.hiredCost != null ? String(selectedItem.hiredCost) : "",
                 valueAdd: selectedItem.valueAdd != null ? String(selectedItem.valueAdd) : "",
-                roi: selectedItem.roi != null ? String(selectedItem.roi) : "",
-                roiRating: selectedItem.roiRating || "",
+                diyRoi: selectedItem.diyRoi != null ? String(selectedItem.diyRoi) : "",
+                hiredRoi: selectedItem.hiredRoi != null ? String(selectedItem.hiredRoi) : "",
+                diyRoiRating: selectedItem.diyRoiRating || "",
+                hiredRoiRating: selectedItem.hiredRoiRating || "",
+                diyDifficulty: selectedItem.diyDifficulty || "",
+                costMode: selectedItem.costMode || "DIY",
                 category: selectedItem.category || "",
                 priority: selectedItem.priority || "",
                 timeline: selectedItem.timeline || "",
@@ -430,27 +486,60 @@ export default function WishListPage() {
             </div>
           )}
 
-          {/* Cost & ROI */}
-          <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5">
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">Cost</p>
-                <p className="text-xl font-bold text-neutral-950 dark:text-neutral-50">
-                  {selectedItem.estimatedCost != null ? `$${selectedItem.estimatedCost.toLocaleString()}` : "—"}
+          {/* DIY vs Hired Toggle + Cost Comparison */}
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5 flex flex-col gap-4">
+            {/* Toggle */}
+            <div className="flex rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700">
+              {(["DIY", "Hired Out"] as const).map((mode) => (
+                <button key={mode} onClick={async () => {
+                  const updated = { ...selectedItem, costMode: mode };
+                  setSelectedItem(updated);
+                  setItems((prev) => prev.map((i) => i.id === updated.id ? updated : i));
+                  await fetch(`/api/wishlist/${selectedItem.id}`, {
+                    method: "PATCH", headers: headers(),
+                    body: JSON.stringify({ costMode: mode }),
+                  }).catch(() => {});
+                }}
+                  className={`flex-1 py-2 text-sm font-semibold text-center transition-colors ${selectedItem.costMode === mode ? "bg-blue-600 text-white" : "text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"}`}>
+                  {mode === "DIY" ? "🔧 DIY" : "👷 Hired Out"}
+                </button>
+              ))}
+            </div>
+
+            {/* Side-by-side */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className={`text-center p-3 rounded-xl ${selectedItem.costMode === "DIY" ? "bg-blue-50 dark:bg-blue-950/20 ring-2 ring-blue-500" : ""}`}>
+                <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">DIY</p>
+                <p className="text-lg font-bold text-neutral-950 dark:text-neutral-50">
+                  {selectedItem.diyCost != null ? `$${selectedItem.diyCost.toLocaleString()}` : "—"}
                 </p>
+                <RoiBadge rating={selectedItem.diyRoiRating} roi={selectedItem.diyRoi} size="sm" />
+                {selectedItem.diyDifficulty && (
+                  <p className={`text-[10px] font-semibold mt-1 ${selectedItem.diyDifficulty === "Easy" ? "text-emerald-600" : selectedItem.diyDifficulty === "Moderate" ? "text-amber-600" : selectedItem.diyDifficulty === "Hard" ? "text-red-600" : "text-neutral-900 dark:text-neutral-100"}`}>
+                    {selectedItem.diyDifficulty === "Pro Only" ? "⚠️ Pro Only" : selectedItem.diyDifficulty + " DIY"}
+                  </p>
+                )}
               </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">Value Add</p>
-                <p className="text-xl font-bold text-emerald-600">
-                  {selectedItem.valueAdd != null ? `$${selectedItem.valueAdd.toLocaleString()}` : "—"}
+              <div className={`text-center p-3 rounded-xl ${selectedItem.costMode === "Hired Out" ? "bg-blue-50 dark:bg-blue-950/20 ring-2 ring-blue-500" : ""}`}>
+                <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">Hired Out</p>
+                <p className="text-lg font-bold text-neutral-950 dark:text-neutral-50">
+                  {selectedItem.hiredCost != null ? `$${selectedItem.hiredCost.toLocaleString()}` : "—"}
                 </p>
+                <RoiBadge rating={selectedItem.hiredRoiRating} roi={selectedItem.hiredRoi} size="sm" />
               </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">ROI</p>
-                <div className="mt-1">
-                  <RoiBadge rating={selectedItem.roiRating} roi={selectedItem.roi} size="md" />
-                </div>
-              </div>
+            </div>
+
+            {/* Value Add + Savings */}
+            <div className="text-center">
+              <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">Value Add</p>
+              <p className="text-lg font-bold text-emerald-600">
+                {selectedItem.valueAdd != null ? `$${selectedItem.valueAdd.toLocaleString()}` : "—"}
+              </p>
+              {selectedItem.diyCost != null && selectedItem.hiredCost != null && selectedItem.hiredCost > selectedItem.diyCost && (
+                <p className="text-xs text-emerald-600 mt-1 font-medium">
+                  You save ${(selectedItem.hiredCost - selectedItem.diyCost).toLocaleString()} doing it yourself ({Math.round(((selectedItem.hiredCost - selectedItem.diyCost) / selectedItem.hiredCost) * 100)}% less)
+                </p>
+              )}
             </div>
           </div>
 
@@ -665,8 +754,9 @@ export default function WishListPage() {
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       {item.category && <span className="text-xs text-neutral-500">{item.category}</span>}
-                      {item.estimatedCost != null && <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">${item.estimatedCost.toLocaleString()}</span>}
-                      <RoiBadge rating={item.roiRating} roi={item.roi} />
+                      {gc(item) > 0 && <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">${gc(item).toLocaleString()}</span>}
+                      <RoiBadge rating={item.costMode === "Hired Out" ? item.hiredRoiRating : item.diyRoiRating} roi={item.costMode === "Hired Out" ? item.hiredRoi : item.diyRoi} />
+                      <span className="text-[10px] text-neutral-400">{item.costMode === "Hired Out" ? "👷" : "🔧"}</span>
                       {item.bestSeason && <span className="text-xs text-neutral-400">{SEASON_ICONS[item.bestSeason] || ""} {item.bestSeason}</span>}
                     </div>
                   </button>
