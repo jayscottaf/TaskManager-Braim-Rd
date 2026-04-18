@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, X, Loader2 } from "lucide-react";
 import { showToast } from "@/components/toast";
 import type {
   Task,
@@ -21,12 +22,25 @@ import {
   FREQUENCIES,
 } from "@/lib/types";
 
+function extractPhotoUrls(text: string | null): string[] {
+  if (!text) return [];
+  const urls: string[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("http") && (trimmed.includes("blob.vercel-storage") || trimmed.includes("/paint-labels/"))) {
+      urls.push(trimmed);
+    }
+  }
+  return urls;
+}
+
 interface TaskFormProps {
   task?: Task;
   mode: "create" | "edit";
+  photoUrls?: string[];
 }
 
-export function TaskForm({ task, mode }: TaskFormProps) {
+export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +62,37 @@ export function TaskForm({ task, mode }: TaskFormProps) {
   const [costEstimate, setCostEstimate] = useState(task?.costEstimate?.toString() ?? "");
   const [actualCost, setActualCost] = useState(task?.actualCost?.toString() ?? "");
   const [notes, setNotes] = useState(task?.notes ?? "");
+  const [taskPhotos, setTaskPhotos] = useState<string[]>(
+    initialPhotoUrls ?? extractPhotoUrls(task?.notes ?? null)
+  );
+  const [addingPhoto, setAddingPhoto] = useState(false);
+
+  async function addTaskPhoto(file: File) {
+    setAddingPhoto(true);
+    try {
+      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: secret ? { "x-app-secret": secret } : {},
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setTaskPhotos((prev) => [...prev, data.url]);
+    } catch {
+      setError("Photo upload failed.");
+    } finally {
+      setAddingPhoto(false);
+    }
+  }
+
+  function buildNotesWithPhotos(): string {
+    const baseNotes = notes.split("\n\nPhotos:")[0].split("\nAfter photo:")[0].trim();
+    if (taskPhotos.length === 0) return baseNotes;
+    return `${baseNotes}\n\nPhotos:\n${taskPhotos.join("\n")}`.trim();
+  }
 
   function toggleType(t: TaskType) {
     setTypes((prev) =>
@@ -81,7 +126,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           ...(dueDateStart ? { dueDate: { start: dueDateStart, ...(dueDateEnd ? { end: dueDateEnd } : {}) } } : {}),
           ...(contractorVendor ? { contractorVendor } : {}),
           ...(costEstimate ? { costEstimate: parseFloat(costEstimate) } : {}),
-          ...(notes ? { notes } : {}),
+          ...(() => { const n = buildNotesWithPhotos(); return n ? { notes: n } : {}; })(),
         };
         await fetch("/api/tasks", {
           method: "POST",
@@ -101,7 +146,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           contractorVendor: contractorVendor || undefined,
           costEstimate: costEstimate ? parseFloat(costEstimate) : undefined,
           actualCost: actualCost ? parseFloat(actualCost) : undefined,
-          notes: notes || undefined,
+          notes: buildNotesWithPhotos() || undefined,
         };
         await fetch(`/api/tasks/${task!.id}`, {
           method: "PATCH",
@@ -436,6 +481,42 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           rows={3}
           className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow resize-y"
         />
+      </div>
+
+      {/* Photos */}
+      <div>
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
+          Photos
+        </label>
+        <div className="flex gap-2 flex-wrap">
+          {taskPhotos.map((url, i) => (
+            <div key={i} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt={`Photo ${i + 1}`} className="w-20 h-20 object-cover rounded-lg" />
+              <button
+                type="button"
+                onClick={() => setTaskPhotos((prev) => prev.filter((_, j) => j !== i))}
+                className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+          <label className={`w-20 h-20 flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-neutral-300 dark:border-neutral-700 text-neutral-400 hover:border-blue-400 hover:text-blue-500 cursor-pointer transition-colors ${addingPhoto ? "opacity-50 pointer-events-none" : ""}`}>
+            {addingPhoto ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+            <span className="text-[9px] font-medium mt-0.5">{addingPhoto ? "..." : "Add"}</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) addTaskPhoto(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
       </div>
 
       {/* Action buttons */}

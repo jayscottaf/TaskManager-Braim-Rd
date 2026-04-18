@@ -35,17 +35,21 @@ function AddTaskContent() {
 
   const urlPrefill = getUrlPrefill();
   const [cameraPrefill, setCameraPrefill] = useState<Partial<Task> | null>(null);
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
 
   const prefill = cameraPrefill || urlPrefill || undefined;
 
-  function handleClassified(result: PhotoClassification) {
-    setCameraPrefill({
-      task: result.task,
-      type: result.type,
-      area: result.area,
-      priority: result.priority,
-      costEstimate: result.costEstimate,
-    } as Partial<Task>);
+  function handleClassified(result: PhotoClassification | null, urls: string[]) {
+    setPhotoUrls(urls);
+    if (result) {
+      setCameraPrefill({
+        task: result.task,
+        type: result.type,
+        area: result.area,
+        priority: result.priority,
+        costEstimate: result.costEstimate,
+      } as Partial<Task>);
+    }
   }
 
   return (
@@ -60,6 +64,7 @@ function AddTaskContent() {
         mode="create"
         key={prefill ? JSON.stringify(prefill) : "empty"}
         task={prefill as Task | undefined}
+        photoUrls={photoUrls}
       />
     </>
   );
