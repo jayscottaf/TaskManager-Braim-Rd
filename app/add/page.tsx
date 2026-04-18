@@ -12,22 +12,24 @@ import type { Task } from "@/lib/types";
 function AddTaskContent() {
   const searchParams = useSearchParams();
 
-  // Build prefill from URL params (from seasonal banner) or camera
+  // Build prefill from URL params (from seasonal banner, calendar, contractors) or camera
   function getUrlPrefill(): Partial<Task> | undefined {
+    const prefill: Record<string, unknown> = {};
     const task = searchParams.get("task");
-    if (!task) return undefined;
-    const prefill: Partial<Task> = { task } as Partial<Task>;
+    if (task) prefill.task = task;
     const area = searchParams.get("area");
-    if (area) (prefill as Record<string, unknown>).area = area;
-    const types = searchParams.get("types");
-    if (types) (prefill as Record<string, unknown>).type = types.split(",");
+    if (area) prefill.area = area;
+    const types = searchParams.get("types") || searchParams.get("type");
+    if (types) prefill.type = types.split(",");
     const priority = searchParams.get("priority");
-    if (priority) (prefill as Record<string, unknown>).priority = priority;
+    if (priority) prefill.priority = priority;
     const frequency = searchParams.get("frequency");
-    if (frequency) (prefill as Record<string, unknown>).frequency = frequency;
+    if (frequency) prefill.frequency = frequency;
     const dueDate = searchParams.get("dueDate");
-    if (dueDate) (prefill as Record<string, unknown>).dueDate = { start: dueDate };
-    return prefill;
+    if (dueDate) prefill.dueDate = { start: dueDate };
+    const contractor = searchParams.get("contractor");
+    if (contractor) prefill.contractorVendor = contractor;
+    return Object.keys(prefill).length > 0 ? (prefill as Partial<Task>) : undefined;
   }
 
   const urlPrefill = getUrlPrefill();

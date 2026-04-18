@@ -13,9 +13,21 @@ import type {
   TaskType,
   Frequency,
 } from "./types";
+import { getCached, setCache, clearCache, CACHE_TTL } from "./cache";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 const databaseId = process.env.NOTION_DATABASE_ID!;
+
+// Notion rich_text blocks cap at 2000 chars each. Split long content across blocks.
+function richTextChunks(text: string): { text: { content: string } }[] {
+  const MAX = 2000;
+  if (text.length <= MAX) return [{ text: { content: text } }];
+  const chunks: { text: { content: string } }[] = [];
+  for (let i = 0; i < text.length; i += MAX) {
+    chunks.push({ text: { content: text.slice(i, i + MAX) } });
+  }
+  return chunks;
+}
 
 // ── Helpers to read Notion properties ──────────────────────────────
 
@@ -106,15 +118,45 @@ export interface GetTasksOptions {
   status?: Status;
   priority?: Priority;
   area?: Area;
+  excludeCompleted?: boolean;
+}
+
+const TASKS_CACHE_PREFIX = "tasks:";
+
+function tasksCacheKey(options?: GetTasksOptions): string {
+  const parts = [
+    options?.status ?? "",
+    options?.priority ?? "",
+    options?.area ?? "",
+    options?.excludeCompleted ? "xc" : "",
+  ];
+  return `${TASKS_CACHE_PREFIX}${parts.join("|")}`;
+}
+
+function invalidateTasksCache(): void {
+  // Clear all task cache entries (there are only a handful of filter combos)
+  for (const key of Array.from((globalThis as unknown as { _tasksCacheKeys?: Set<string> })._tasksCacheKeys ?? [])) {
+    clearCache(key);
+  }
+  (globalThis as unknown as { _tasksCacheKeys?: Set<string> })._tasksCacheKeys = new Set();
 }
 
 export async function getTasks(options?: GetTasksOptions): Promise<Task[]> {
+  const cacheKey = tasksCacheKey(options);
+  const cached = getCached<Task[]>(cacheKey);
+  if (cached) return cached;
+
   const filters: QueryDatabaseParameters["filter"][] = [];
 
   if (options?.status) {
     filters.push({
       property: "Status",
       status: { equals: options.status },
+    } as QueryDatabaseParameters["filter"]);
+  } else if (options?.excludeCompleted) {
+    filters.push({
+      property: "Status",
+      status: { does_not_equal: "Completed" },
     } as QueryDatabaseParameters["filter"]);
   }
   if (options?.priority) {
@@ -142,9 +184,15 @@ export async function getTasks(options?: GetTasksOptions): Promise<Task[]> {
   }
 
   const response = await notion.databases.query(query);
-  return response.results
+  const tasks = response.results
     .filter((p): p is PageObjectResponse => "properties" in p)
     .map(pageToTask);
+
+  setCache(cacheKey, tasks, CACHE_TTL.TASK_LIST);
+  const keySet = ((globalThis as unknown as { _tasksCacheKeys?: Set<string> })._tasksCacheKeys ??= new Set());
+  keySet.add(cacheKey);
+
+  return tasks;
 }
 
 export async function getTask(id: string): Promise<Task> {
@@ -195,7 +243,7 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
   }
   if (input.notes) {
     properties["Notes"] = {
-      rich_text: [{ text: { content: input.notes } }],
+      rich_text: richTextChunks(input.notes),
     };
   }
 
@@ -204,6 +252,7 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
     properties,
   })) as PageObjectResponse;
 
+  invalidateTasksCache();
   return pageToTask(page);
 }
 
@@ -262,7 +311,7 @@ export async function updateTask(
   }
   if (input.notes !== undefined) {
     properties["Notes"] = {
-      rich_text: [{ text: { content: input.notes } }],
+      rich_text: input.notes ? richTextChunks(input.notes) : [],
     };
   }
 
@@ -271,11 +320,13 @@ export async function updateTask(
     properties,
   })) as PageObjectResponse;
 
+  invalidateTasksCache();
   return pageToTask(page);
 }
 
 export async function deleteTask(id: string): Promise<void> {
   await notion.pages.update({ page_id: id, archived: true });
+  invalidateTasksCache();
 }
 
 // Ensure the "Notes" property exists in the database

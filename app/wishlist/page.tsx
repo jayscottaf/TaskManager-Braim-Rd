@@ -261,6 +261,7 @@ export default function WishListPage() {
         activeRating ? `\nROI: ${activeRoi ?? "?"}% (${activeRating})` : "",
         item.diyDifficulty ? `\nDIY Difficulty: ${item.diyDifficulty}` : "",
         item.bestSeason ? `\nBest Season: ${item.bestSeason}` : "",
+        item.photos.length > 0 ? `\n\nPhotos:\n${item.photos.join("\n")}` : "",
         item.notes ? `\nNotes: ${item.notes}` : "",
       ].filter(Boolean).join("");
 
@@ -273,7 +274,7 @@ export default function WishListPage() {
         frequency: "One-time",
         costEstimate: activeCost || 0,
         dueDate: { start: promoteDate, ...(promoteEndDate ? { end: promoteEndDate } : {}) },
-        notes: notes.slice(0, 2000),
+        notes,
       };
 
       const res = await fetch("/api/tasks", {

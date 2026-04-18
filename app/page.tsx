@@ -1,6 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
+import Link from "next/link";
+import { DollarSign, Wrench } from "lucide-react";
 import { ErrorDetails } from "@/components/error-details";
 import { getTasks } from "@/lib/notion";
 import { TaskCard } from "@/components/task-card";
@@ -28,9 +30,12 @@ async function TaskList({
 }) {
   let tasks;
   try {
-    const allTasks = await getTasks({ status, priority, area });
-    // Hide completed tasks from dashboard unless explicitly filtered to Completed
-    tasks = status === "Completed" ? allTasks : allTasks.filter((t) => t.status !== "Completed");
+    tasks = await getTasks({
+      status,
+      priority,
+      area,
+      excludeCompleted: status !== "Completed",
+    });
 
     // Apply time range filter: show overdue tasks always + tasks due within range
     const rangeDays = parseInt(range || "30", 10);
@@ -142,7 +147,23 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           <h1 className="text-3xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">Braim Rd</h1>
           <p className="text-sm text-neutral-400 mt-0.5">Home Maintenance Tracker</p>
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-1">
+          <Link
+            href="/spending"
+            aria-label="Spending dashboard"
+            className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 transition-colors"
+          >
+            <DollarSign className="w-5 h-5" />
+          </Link>
+          <Link
+            href="/contractors"
+            aria-label="Contractors directory"
+            className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 transition-colors"
+          >
+            <Wrench className="w-5 h-5" />
+          </Link>
+          <ThemeToggle />
+        </div>
       </div>
 
       {/* Seasonal Banner */}
