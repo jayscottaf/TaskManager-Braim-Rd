@@ -134,11 +134,7 @@ function tasksCacheKey(options?: GetTasksOptions): string {
 }
 
 function invalidateTasksCache(): void {
-  // Clear all task cache entries (there are only a handful of filter combos)
-  for (const key of Array.from((globalThis as unknown as { _tasksCacheKeys?: Set<string> })._tasksCacheKeys ?? [])) {
-    clearCache(key);
-  }
-  (globalThis as unknown as { _tasksCacheKeys?: Set<string> })._tasksCacheKeys = new Set();
+  clearCache();
 }
 
 export async function getTasks(options?: GetTasksOptions): Promise<Task[]> {
@@ -189,9 +185,6 @@ export async function getTasks(options?: GetTasksOptions): Promise<Task[]> {
     .map(pageToTask);
 
   setCache(cacheKey, tasks, CACHE_TTL.TASK_LIST);
-  const keySet = ((globalThis as unknown as { _tasksCacheKeys?: Set<string> })._tasksCacheKeys ??= new Set());
-  keySet.add(cacheKey);
-
   return tasks;
 }
 
