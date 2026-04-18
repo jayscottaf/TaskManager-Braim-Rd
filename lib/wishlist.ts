@@ -329,7 +329,7 @@ export async function createWishListItem(input: CreateWishListInput): Promise<st
     const season = input.bestSeason.split("(")[0].trim();
     properties["Best Season"] = { select: { name: season } };
   }
-  if (input.photos && input.photos.length > 0) properties.Photos = { rich_text: [{ text: { content: JSON.stringify(input.photos) } }] };
+  if (input.photos && input.photos.length > 0) properties.Photos = { rich_text: richTextChunks(JSON.stringify(input.photos)) };
   if (input.notes) properties.Notes = { rich_text: [{ text: { content: input.notes } }] };
 
   const page = await notion.pages.create({
@@ -387,7 +387,7 @@ export async function updateWishListItem(
       properties["Best Season"] = { select: null };
     }
   }
-  if (updates.photos !== undefined) properties.Photos = { rich_text: updates.photos && updates.photos.length > 0 ? [{ text: { content: JSON.stringify(updates.photos) } }] : [] };
+  if (updates.photos !== undefined) properties.Photos = { rich_text: updates.photos && updates.photos.length > 0 ? richTextChunks(JSON.stringify(updates.photos)) : [] };
   if (updates.notes !== undefined) properties.Notes = updates.notes ? { rich_text: [{ text: { content: updates.notes } }] } : { rich_text: [] };
 
   if (Object.keys(properties).length > 0) {
