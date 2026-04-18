@@ -179,12 +179,20 @@ export function TaskCard({ task }: { task: Task }) {
               )}
             </div>
 
-            {task.type.length > 0 && (
+            {(task.type.length > 0 || task.tags.length > 0) && (
               <div className="flex flex-wrap gap-1.5 mt-2.5">
                 {task.type.map((t) => (
                   <span
                     key={t}
                     className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 rounded-md text-[11px] font-medium"
+                  >
+                    {t}
+                  </span>
+                ))}
+                {task.tags.map((t) => (
+                  <span
+                    key={t}
+                    className="px-2 py-0.5 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded-md text-[11px] font-medium"
                   >
                     {t}
                   </span>

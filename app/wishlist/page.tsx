@@ -30,6 +30,7 @@ export default function WishListPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<SortKey>("cost");
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +122,7 @@ export default function WishListPage() {
         timeline: formData.timeline || undefined,
         bestSeason: formData.bestSeason || undefined,
         photos: formData.photos ? JSON.parse(formData.photos) : undefined,
+        tags: formData.tags ? formData.tags.split(",").filter(Boolean) : undefined,
         notes: formData.notes || undefined,
       };
       const res = await fetch("/api/wishlist", {
@@ -160,6 +162,7 @@ export default function WishListPage() {
         timeline: formData.timeline || null,
         bestSeason: formData.bestSeason || null,
         photos: formData.photos ? JSON.parse(formData.photos) : [],
+        tags: formData.tags ? formData.tags.split(",").filter(Boolean) : [],
         notes: formData.notes || "",
       };
       const res = await fetch(`/api/wishlist/${selectedItem.id}`, {
@@ -219,6 +222,7 @@ export default function WishListPage() {
         timeline: item.timeline || undefined,
         bestSeason: item.bestSeason || undefined,
         photos: item.photos.length > 0 ? item.photos : undefined,
+        tags: item.tags.length > 0 ? item.tags : undefined,
         notes: item.notes || undefined,
       };
       await fetch("/api/wishlist", {
@@ -298,7 +302,18 @@ export default function WishListPage() {
   // Sorted items
   const gc = (i: WishListItem) => (i.costMode === "Hired Out" ? i.hiredCost : i.diyCost) || 0;
   const gr = (i: WishListItem) => (i.costMode === "Hired Out" ? i.hiredRoi : i.diyRoi) || 0;
-  const sortedItems = [...items].sort((a, b) => {
+  const filteredItems = searchQuery
+    ? items.filter((i) => {
+        const q = searchQuery.toLowerCase();
+        return (
+          i.project.toLowerCase().includes(q) ||
+          i.category?.toLowerCase().includes(q) ||
+          i.tags.some((t) => t.toLowerCase().includes(q)) ||
+          i.description?.toLowerCase().includes(q)
+        );
+      })
+    : items;
+  const sortedItems = [...filteredItems].sort((a, b) => {
     if (sortBy === "cost") return gc(b) - gc(a);
     if (sortBy === "roi") return gr(b) - gr(a);
     const priOrder = { High: 3, Medium: 2, Low: 1 };
@@ -429,6 +444,35 @@ export default function WishListPage() {
           </div>
         </div>
         <div>
+          <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Tags</label>
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {(formData.tags ? formData.tags.split(",").filter(Boolean) : []).map((tag) => (
+              <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 rounded-md text-xs font-medium">
+                {tag}
+                <button type="button" onClick={() => set("tags", (formData.tags || "").split(",").filter((t) => t !== tag).join(","))} className="hover:text-red-500">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+          <input
+            type="text"
+            placeholder="Type tag and press Enter..."
+            className={inputClass}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                const val = (e.target as HTMLInputElement).value.trim().replace(/,/g, "");
+                if (val) {
+                  const existing = formData.tags ? formData.tags.split(",").filter(Boolean) : [];
+                  if (!existing.includes(val)) set("tags", [...existing, val].join(","));
+                  (e.target as HTMLInputElement).value = "";
+                }
+              }
+            }}
+          />
+        </div>
+        <div>
           <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Notes</label>
           <textarea value={formData.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Contractor quotes, links, ideas..." className={inputClass} />
         </div>
@@ -505,6 +549,7 @@ export default function WishListPage() {
                   timeline: selectedItem.timeline || "",
                   bestSeason: selectedItem.bestSeason || "",
                   photos: selectedItem.photos.length > 0 ? JSON.stringify(selectedItem.photos) : "",
+                  tags: selectedItem.tags.join(","),
                   notes: selectedItem.notes || "",
                 });
                 setEditing(true);
@@ -796,6 +841,19 @@ export default function WishListPage() {
       {/* Cost Summary */}
       {!loading && items.length > 0 && <CostSummary items={items} selectedIds={selectedIds} />}
 
+      {/* Search */}
+      {!showForm && !loading && items.length > 0 && (
+        <div className="px-5">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search projects or tags..."
+            className="w-full px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+          />
+        </div>
+      )}
+
       {/* Sort + Archive toggle */}
       {!showForm && !loading && items.length > 0 && (
         <div className="px-5 flex items-center justify-between">
@@ -860,6 +918,9 @@ export default function WishListPage() {
                       {gc(item) > 0 && <RoiBadge rating={item.costMode === "Hired Out" ? item.hiredRoiRating : item.diyRoiRating} roi={item.costMode === "Hired Out" ? item.hiredRoi : item.diyRoi} />}
                       <span className="text-[10px] text-neutral-400">{item.costMode === "Hired Out" ? "👷" : "🔧"}</span>
                       {item.bestSeason && <span className="text-xs text-neutral-400">{SEASON_ICONS[item.bestSeason] || ""} {item.bestSeason}</span>}
+                      {item.tags.map((tag) => (
+                        <span key={tag} className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded text-[10px] font-medium">{tag}</span>
+                      ))}
                     </div>
                   </button>
                 </div>

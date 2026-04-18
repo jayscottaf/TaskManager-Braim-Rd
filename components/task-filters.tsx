@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
-import { SlidersHorizontal, X } from "lucide-react";
+import { SlidersHorizontal, Search, X } from "lucide-react";
 import { STATUSES, PRIORITIES, AREAS } from "@/lib/types";
 
 const TIME_RANGES = [
@@ -24,8 +24,10 @@ export function TaskFilters() {
   const activePriority = searchParams.get("priority") || "";
   const activeArea = searchParams.get("area") || "";
   const activeRange = searchParams.get("range") ?? DEFAULT_RANGE;
+  const activeSearch = searchParams.get("q") || "";
+  const activeTag = searchParams.get("tag") || "";
 
-  const filterCount = [activeStatus, activePriority, activeArea].filter(Boolean).length;
+  const filterCount = [activeStatus, activePriority, activeArea, activeTag].filter(Boolean).length;
 
   function setFilter(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -42,6 +44,8 @@ export function TaskFilters() {
     params.delete("status");
     params.delete("priority");
     params.delete("area");
+    params.delete("tag");
+    params.delete("q");
     router.push(`/?${params.toString()}`);
     setOpen(false);
   }
@@ -60,7 +64,29 @@ export function TaskFilters() {
 
   return (
     <div className="px-5 relative" ref={panelRef}>
-      {/* Single row: time range + filter button */}
+      {/* Search bar */}
+      <div className="relative mb-2">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+        <input
+          type="text"
+          defaultValue={activeSearch}
+          onChange={(e) => {
+            const val = e.target.value;
+            const params = new URLSearchParams(searchParams.toString());
+            if (val) params.set("q", val); else params.delete("q");
+            router.push(`/?${params.toString()}`);
+          }}
+          placeholder="Search tasks or tags..."
+          className="w-full pl-9 pr-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+        />
+        {activeSearch && (
+          <button onClick={() => setFilter("q", "")} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600">
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Time range + filter button */}
       <div className="flex items-center gap-2">
         <div className="flex gap-1.5 flex-1">
           {TIME_RANGES.map((r) => (
@@ -132,6 +158,18 @@ export function TaskFilters() {
                 <option key={a} value={a}>{a}</option>
               ))}
             </select>
+          </div>
+
+          {/* Tag filter */}
+          <div className="mb-3">
+            <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium mb-1.5">Tag</p>
+            <input
+              type="text"
+              value={activeTag}
+              onChange={(e) => setFilter("tag", e.target.value)}
+              placeholder="Filter by tag..."
+              className="w-full px-3 py-2 rounded-lg text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            />
           </div>
 
           {/* Clear all */}

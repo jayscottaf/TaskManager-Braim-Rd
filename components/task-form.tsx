@@ -62,6 +62,8 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
   const [costEstimate, setCostEstimate] = useState(task?.costEstimate?.toString() ?? "");
   const [actualCost, setActualCost] = useState(task?.actualCost?.toString() ?? "");
   const [notes, setNotes] = useState(task?.notes ?? "");
+  const [tags, setTags] = useState<string[]>(task?.tags ?? []);
+  const [tagInput, setTagInput] = useState("");
   const [taskPhotos, setTaskPhotos] = useState<string[]>(
     initialPhotoUrls ?? extractPhotoUrls(task?.notes ?? null)
   );
@@ -127,6 +129,7 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
           ...(contractorVendor ? { contractorVendor } : {}),
           ...(costEstimate ? { costEstimate: parseFloat(costEstimate) } : {}),
           ...(() => { const n = buildNotesWithPhotos(); return n ? { notes: n } : {}; })(),
+          ...(tags.length > 0 ? { tags } : {}),
         };
         await fetch("/api/tasks", {
           method: "POST",
@@ -147,6 +150,7 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
           costEstimate: costEstimate ? parseFloat(costEstimate) : undefined,
           actualCost: actualCost ? parseFloat(actualCost) : undefined,
           notes: buildNotesWithPhotos() || undefined,
+          tags,
         };
         await fetch(`/api/tasks/${task!.id}`, {
           method: "PATCH",
@@ -373,6 +377,55 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
             </option>
           ))}
         </select>
+      </div>
+
+      {/* Tags */}
+      <div>
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
+          Tags
+        </label>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 rounded-md text-xs font-medium"
+            >
+              {tag}
+              <button type="button" onClick={() => setTags((prev) => prev.filter((t) => t !== tag))} className="hover:text-red-500">
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                const val = tagInput.trim().replace(/,/g, "");
+                if (val && !tags.includes(val)) setTags((prev) => [...prev, val]);
+                setTagInput("");
+              }
+            }}
+            placeholder="Type and press Enter..."
+            className="flex-1 px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const val = tagInput.trim().replace(/,/g, "");
+              if (val && !tags.includes(val)) setTags((prev) => [...prev, val]);
+              setTagInput("");
+            }}
+            disabled={!tagInput.trim()}
+            className="px-3 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium disabled:opacity-30 hover:bg-blue-700 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Frequency */}

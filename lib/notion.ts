@@ -108,6 +108,7 @@ function pageToTask(page: PageObjectResponse): Task {
     costEstimate: getNumber(page, "Cost Estimate"),
     actualCost: getNumber(page, "Actual Cost"),
     notes: getText(page, "Notes"),
+    tags: getMultiSelect(page, "Tags"),
     createdTime: page.created_time,
   };
 }
@@ -239,6 +240,11 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
       rich_text: richTextChunks(input.notes),
     };
   }
+  if (input.tags && input.tags.length > 0) {
+    properties["Tags"] = {
+      multi_select: input.tags.map((t) => ({ name: t })),
+    };
+  }
 
   const page = (await notion.pages.create({
     parent: { database_id: databaseId },
@@ -305,6 +311,11 @@ export async function updateTask(
   if (input.notes !== undefined) {
     properties["Notes"] = {
       rich_text: input.notes ? richTextChunks(input.notes) : [],
+    };
+  }
+  if (input.tags !== undefined) {
+    properties["Tags"] = {
+      multi_select: input.tags.map((t) => ({ name: t })),
     };
   }
 

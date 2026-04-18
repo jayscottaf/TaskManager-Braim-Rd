@@ -14,7 +14,7 @@ import { DashboardAside } from "@/components/dashboard-aside";
 import type { Task, Status, Priority, Area } from "@/lib/types";
 
 interface PageProps {
-  searchParams: Promise<{ status?: string; priority?: string; area?: string; range?: string }>;
+  searchParams: Promise<{ status?: string; priority?: string; area?: string; range?: string; q?: string; tag?: string }>;
 }
 
 async function DashboardContent({
@@ -22,11 +22,15 @@ async function DashboardContent({
   priority,
   area,
   range,
+  search,
+  tag,
 }: {
   status?: Status;
   priority?: Priority;
   area?: Area;
   range?: string;
+  search?: string;
+  tag?: string;
 }) {
   let tasks;
   try {
@@ -48,6 +52,21 @@ async function DashboardContent({
         const due = new Date(t.dueDate.start);
         return due <= cutoff;
       });
+    }
+
+    if (search) {
+      const q = search.toLowerCase();
+      tasks = tasks.filter((t) =>
+        t.task.toLowerCase().includes(q) ||
+        t.tags.some((tag) => tag.toLowerCase().includes(q)) ||
+        t.area?.toLowerCase().includes(q) ||
+        t.contractorVendor?.toLowerCase().includes(q)
+      );
+    }
+
+    if (tag) {
+      const tagLower = tag.toLowerCase();
+      tasks = tasks.filter((t) => t.tags.some((tt) => tt.toLowerCase().includes(tagLower)));
     }
 
     const PRIORITY_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
@@ -196,6 +215,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           priority={params.priority as Priority | undefined}
           area={params.area as Area | undefined}
           range={params.range}
+          search={params.q}
+          tag={params.tag}
         />
       </Suspense>
     </div>

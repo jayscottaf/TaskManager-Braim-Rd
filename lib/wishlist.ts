@@ -25,6 +25,7 @@ export interface WishListItem {
   timeline: string | null;
   bestSeason: string | null;
   photos: string[];
+  tags: string[];
   notes: string | null;
   _status: string;
 }
@@ -58,6 +59,7 @@ export interface CreateWishListInput {
   timeline?: string;
   bestSeason?: string;
   photos?: string[];
+  tags?: string[];
   notes?: string;
 }
 
@@ -268,6 +270,11 @@ function pageToItem(page: PageObjectResponse): WishListItem {
     timeline: getSelect("Timeline"),
     bestSeason: getSelect("Best Season"),
     photos: parsePhotos(getRichText("Photos")),
+    tags: (() => {
+      const prop = p.Tags;
+      if (prop?.type === "multi_select") return prop.multi_select.map((o: { name: string }) => o.name);
+      return [];
+    })(),
     notes: getRichText("Notes"),
     _status: getSelect("_Status") || "Active",
   };
@@ -330,6 +337,7 @@ export async function createWishListItem(input: CreateWishListInput): Promise<st
     properties["Best Season"] = { select: { name: season } };
   }
   if (input.photos && input.photos.length > 0) properties.Photos = { rich_text: richTextChunks(JSON.stringify(input.photos)) };
+  if (input.tags && input.tags.length > 0) properties.Tags = { multi_select: input.tags.map((t) => ({ name: t })) };
   if (input.notes) properties.Notes = { rich_text: [{ text: { content: input.notes } }] };
 
   const page = await notion.pages.create({
@@ -388,6 +396,7 @@ export async function updateWishListItem(
     }
   }
   if (updates.photos !== undefined) properties.Photos = { rich_text: updates.photos && updates.photos.length > 0 ? richTextChunks(JSON.stringify(updates.photos)) : [] };
+  if (updates.tags !== undefined) properties.Tags = { multi_select: (updates.tags ?? []).map((t) => ({ name: t })) };
   if (updates.notes !== undefined) properties.Notes = updates.notes ? { rich_text: [{ text: { content: updates.notes } }] } : { rich_text: [] };
 
   if (Object.keys(properties).length > 0) {
