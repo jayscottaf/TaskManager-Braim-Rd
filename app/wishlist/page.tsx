@@ -81,10 +81,14 @@ export default function WishListPage() {
       project: plan.project,
       description: plan.description,
       aiPlan: plan.plan,
-      estimatedCost: String(plan.estimatedCost),
+      diyCost: String(plan.diyCost),
+      hiredCost: String(plan.hiredCost),
       valueAdd: String(plan.valueAdd),
-      roi: String(plan.roi),
-      roiRating: plan.roiRating,
+      diyRoi: String(plan.diyRoi),
+      hiredRoi: String(plan.hiredRoi),
+      diyRoiRating: plan.diyRoiRating,
+      hiredRoiRating: plan.hiredRoiRating,
+      diyDifficulty: plan.diyDifficulty,
       category: plan.category,
       priority: plan.priority,
       timeline: plan.timeline,
@@ -102,10 +106,15 @@ export default function WishListPage() {
         project: formData.project,
         description: formData.description || undefined,
         aiPlan: formData.aiPlan || undefined,
-        estimatedCost: formData.estimatedCost ? Number(formData.estimatedCost) : undefined,
+        diyCost: formData.diyCost ? Number(formData.diyCost) : undefined,
+        hiredCost: formData.hiredCost ? Number(formData.hiredCost) : undefined,
         valueAdd: formData.valueAdd ? Number(formData.valueAdd) : undefined,
-        roi: formData.roi ? Number(formData.roi) : undefined,
-        roiRating: formData.roiRating || undefined,
+        diyRoi: formData.diyRoi ? Number(formData.diyRoi) : undefined,
+        hiredRoi: formData.hiredRoi ? Number(formData.hiredRoi) : undefined,
+        diyRoiRating: formData.diyRoiRating || undefined,
+        hiredRoiRating: formData.hiredRoiRating || undefined,
+        diyDifficulty: formData.diyDifficulty || undefined,
+        costMode: formData.costMode || undefined,
         category: formData.category || undefined,
         priority: formData.priority || undefined,
         timeline: formData.timeline || undefined,
@@ -136,10 +145,15 @@ export default function WishListPage() {
         project: formData.project,
         description: formData.description || "",
         aiPlan: formData.aiPlan || "",
-        estimatedCost: formData.estimatedCost ? Number(formData.estimatedCost) : null,
+        diyCost: formData.diyCost ? Number(formData.diyCost) : null,
+        hiredCost: formData.hiredCost ? Number(formData.hiredCost) : null,
         valueAdd: formData.valueAdd ? Number(formData.valueAdd) : null,
-        roi: formData.roi ? Number(formData.roi) : null,
-        roiRating: formData.roiRating || null,
+        diyRoi: formData.diyRoi ? Number(formData.diyRoi) : null,
+        hiredRoi: formData.hiredRoi ? Number(formData.hiredRoi) : null,
+        diyRoiRating: formData.diyRoiRating || null,
+        hiredRoiRating: formData.hiredRoiRating || null,
+        diyDifficulty: formData.diyDifficulty || null,
+        costMode: formData.costMode || null,
         category: formData.category || null,
         priority: formData.priority || null,
         timeline: formData.timeline || null,
@@ -235,10 +249,13 @@ export default function WishListPage() {
     setSaving(true);
     setError(null);
     try {
+      const activeRoiRating = getActiveRoiRating(item);
+      const activeRoi = getActiveRoi(item);
+      const activeCost = getActiveCost(item);
       const notes = [
         item.description,
         item.aiPlan ? `\nAI Plan:\n${item.aiPlan}` : "",
-        item.roiRating ? `\nROI: ${item.roi ?? "?"}% (${item.roiRating})` : "",
+        activeRoiRating ? `\nROI: ${activeRoi ?? "?"}% (${activeRoiRating})` : "",
         item.bestSeason ? `\nBest Season: ${item.bestSeason}` : "",
         item.notes ? `\nNotes: ${item.notes}` : "",
       ].filter(Boolean).join("");
@@ -250,7 +267,7 @@ export default function WishListPage() {
         area: CATEGORY_TO_AREA[item.category || "General"] || "Exterior",
         type: [CATEGORY_TO_TYPE[item.category || "General"] || "General Repair"],
         frequency: "One-time",
-        costEstimate: item.estimatedCost || 0,
+        costEstimate: activeCost || 0,
         dueDate: { start: promoteDate, ...(promoteEndDate ? { end: promoteEndDate } : {}) },
         notes: notes.slice(0, 2000),
       };
@@ -274,25 +291,36 @@ export default function WishListPage() {
 
   // Sorted items
   const sortedItems = [...items].sort((a, b) => {
-    if (sortBy === "cost") return (b.estimatedCost || 0) - (a.estimatedCost || 0);
-    if (sortBy === "roi") return (b.roi || 0) - (a.roi || 0);
+    if (sortBy === "cost") return (getActiveCost(b) || 0) - (getActiveCost(a) || 0);
+    if (sortBy === "roi") return (getActiveRoi(b) || 0) - (getActiveRoi(a) || 0);
     const priOrder = { High: 3, Medium: 2, Low: 1 };
     return (priOrder[b.priority as keyof typeof priOrder] || 0) - (priOrder[a.priority as keyof typeof priOrder] || 0);
   });
 
   const inputClass = "w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow";
 
+  function roiRating(roi: number): string {
+    return roi > 100 ? "High ROI" : roi >= 50 ? "Good" : roi > 0 ? "Low" : "Lifestyle";
+  }
+
   function set(key: string, val: string) {
     setFormData((prev) => {
       const next = { ...prev, [key]: val };
-      // Auto-recalculate ROI when cost or value add changes
-      if (key === "estimatedCost" || key === "valueAdd") {
-        const cost = Number(key === "estimatedCost" ? val : next.estimatedCost) || 0;
-        const value = Number(key === "valueAdd" ? val : next.valueAdd) || 0;
+      const valueAdd = Number(next.valueAdd) || 0;
+      if (key === "diyCost" || key === "valueAdd") {
+        const cost = Number(next.diyCost) || 0;
         if (cost > 0) {
-          const roi = Math.round((value / cost) * 100);
-          next.roi = String(roi);
-          next.roiRating = roi > 100 ? "High ROI" : roi >= 50 ? "Good" : roi > 0 ? "Low" : "Lifestyle";
+          const roi = Math.round((valueAdd / cost) * 100);
+          next.diyRoi = String(roi);
+          next.diyRoiRating = roiRating(roi);
+        }
+      }
+      if (key === "hiredCost" || key === "valueAdd") {
+        const cost = Number(next.hiredCost) || 0;
+        if (cost > 0) {
+          const roi = Math.round((valueAdd / cost) * 100);
+          next.hiredRoi = String(roi);
+          next.hiredRoiRating = roiRating(roi);
         }
       }
       return next;
@@ -316,29 +344,29 @@ export default function WishListPage() {
         </div>
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Est. Cost</label>
-            <input type="number" value={formData.estimatedCost || ""} onChange={(e) => set("estimatedCost", e.target.value)} min="0" className={inputClass} />
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">DIY Cost</label>
+            <input type="number" value={formData.diyCost || ""} onChange={(e) => set("diyCost", e.target.value)} min="0" className={inputClass} />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Hired Cost</label>
+            <input type="number" value={formData.hiredCost || ""} onChange={(e) => set("hiredCost", e.target.value)} min="0" className={inputClass} />
           </div>
           <div>
             <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Value Add</label>
             <input type="number" value={formData.valueAdd || ""} onChange={(e) => set("valueAdd", e.target.value)} min="0" className={inputClass} />
           </div>
-          <div>
-            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">ROI %</label>
-            <input type="number" value={formData.roi || ""} onChange={(e) => set("roi", e.target.value)} className={inputClass} />
-          </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">ROI Rating</label>
-            <select value={formData.roiRating || ""} onChange={(e) => set("roiRating", e.target.value)} className={inputClass}>
-              <option value="">Select...</option>
-              <option value="High ROI">High ROI (&gt;100%)</option>
-              <option value="Good">Good (50-100%)</option>
-              <option value="Low">Low (&lt;50%)</option>
-              <option value="Lifestyle">Lifestyle</option>
-            </select>
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">DIY ROI</label>
+            <input type="number" value={formData.diyRoi || ""} onChange={(e) => set("diyRoi", e.target.value)} className={inputClass} />
           </div>
+          <div>
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Hired ROI</label>
+            <input type="number" value={formData.hiredRoi || ""} onChange={(e) => set("hiredRoi", e.target.value)} className={inputClass} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Category</label>
             <select value={formData.category || ""} onChange={(e) => set("category", e.target.value)} className={inputClass}>
@@ -433,10 +461,15 @@ export default function WishListPage() {
                   project: selectedItem.project,
                   description: selectedItem.description || "",
                   aiPlan: selectedItem.aiPlan || "",
-                  estimatedCost: selectedItem.estimatedCost != null ? String(selectedItem.estimatedCost) : "",
+                  diyCost: selectedItem.diyCost != null ? String(selectedItem.diyCost) : "",
+                  hiredCost: selectedItem.hiredCost != null ? String(selectedItem.hiredCost) : "",
                   valueAdd: selectedItem.valueAdd != null ? String(selectedItem.valueAdd) : "",
-                  roi: selectedItem.roi != null ? String(selectedItem.roi) : "",
-                  roiRating: selectedItem.roiRating || "",
+                  diyRoi: selectedItem.diyRoi != null ? String(selectedItem.diyRoi) : "",
+                  hiredRoi: selectedItem.hiredRoi != null ? String(selectedItem.hiredRoi) : "",
+                  diyRoiRating: selectedItem.diyRoiRating || "",
+                  hiredRoiRating: selectedItem.hiredRoiRating || "",
+                  diyDifficulty: selectedItem.diyDifficulty || "",
+                  costMode: selectedItem.costMode || "",
                   category: selectedItem.category || "",
                   priority: selectedItem.priority || "",
                   timeline: selectedItem.timeline || "",
@@ -480,7 +513,7 @@ export default function WishListPage() {
               <div>
                 <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">Cost</p>
                 <p className="text-xl font-bold text-neutral-950 dark:text-neutral-50">
-                  {selectedItem.estimatedCost != null ? `$${selectedItem.estimatedCost.toLocaleString()}` : "—"}
+                  {getActiveCost(selectedItem) != null ? `$${getActiveCost(selectedItem)!.toLocaleString()}` : "—"}
                 </p>
               </div>
               <div>
@@ -492,7 +525,7 @@ export default function WishListPage() {
               <div>
                 <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">ROI</p>
                 <div className="mt-1">
-                  <RoiBadge rating={selectedItem.roiRating} roi={selectedItem.roi} size="md" />
+                  <RoiBadge rating={getActiveRoiRating(selectedItem)} roi={getActiveRoi(selectedItem)} size="md" />
                 </div>
               </div>
             </div>
@@ -749,8 +782,8 @@ export default function WishListPage() {
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       {item.category && <span className="text-xs text-neutral-500">{item.category}</span>}
-                      {item.estimatedCost != null && <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">${item.estimatedCost.toLocaleString()}</span>}
-                      <RoiBadge rating={item.roiRating} roi={item.roi} />
+                      {getActiveCost(item) != null && <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">${getActiveCost(item)!.toLocaleString()}</span>}
+                      <RoiBadge rating={getActiveRoiRating(item)} roi={getActiveRoi(item)} />
                       {item.bestSeason && <span className="text-xs text-neutral-400">{SEASON_ICONS[item.bestSeason] || ""} {item.bestSeason}</span>}
                     </div>
                   </button>
