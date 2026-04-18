@@ -1,8 +1,15 @@
 import type { Metadata, Viewport } from "next";
+import { Fraunces } from "next/font/google";
 import { BottomNav } from "@/components/bottom-nav";
 import { ToastProvider } from "@/components/toast";
 import { ServiceWorkerRegister } from "@/components/sw-register";
 import "./globals.css";
+
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-display",
+});
 
 export const metadata: Metadata = {
   title: "TaskTracker - Braim Rd",
@@ -42,7 +49,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full" suppressHydrationWarning>
+    <html lang="en" className={`h-full ${fraunces.variable}`} suppressHydrationWarning>
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />

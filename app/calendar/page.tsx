@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { getTasks } from "@/lib/notion";
 import { CalendarView } from "@/components/calendar-view";
 import { ErrorDetails } from "@/components/error-details";
+import { PageMenu } from "@/components/page-menu";
 
 export default async function CalendarPage() {
   let tasks;
@@ -12,9 +13,12 @@ export default async function CalendarPage() {
     const e = err as { code?: string; message?: string };
     return (
       <div className="flex flex-col gap-6 pt-6 pb-4">
-        <div className="px-5">
-          <h1 className="text-3xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">Calendar</h1>
-          <p className="text-sm text-neutral-400 mt-0.5">Tasks by due date</p>
+        <div className="px-5 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold font-display tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">Calendar</h1>
+            <p className="text-sm text-neutral-400 mt-0.5">Tasks by due date</p>
+          </div>
+          <PageMenu />
         </div>
         <div className="mx-5 p-5 bg-red-50 dark:bg-red-950/30 rounded-2xl">
           <p className="font-semibold text-red-700 dark:text-red-400">Having trouble connecting</p>
@@ -27,9 +31,12 @@ export default async function CalendarPage() {
 
   return (
     <div className="flex flex-col gap-6 pt-6 pb-4">
-      <div className="px-5">
-        <h1 className="text-3xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">Calendar</h1>
-        <p className="text-sm text-neutral-400 mt-0.5">Tasks by due date</p>
+      <div className="px-5 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold font-display tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">Calendar</h1>
+          <p className="text-sm text-neutral-400 mt-0.5">Tasks by due date</p>
+        </div>
+        <PageMenu />
       </div>
       <CalendarView tasks={tasks} />
     </div>

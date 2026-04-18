@@ -193,7 +193,7 @@ export default function FeaturePage() {
                 <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">
+                <h1 className="text-2xl font-bold font-display tracking-tight text-neutral-950 dark:text-neutral-50">
                   {selectedItem[titleField] || "Untitled"}
                 </h1>
                 {isArchived && (
@@ -337,7 +337,7 @@ export default function FeaturePage() {
             >
               <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
             </Link>
-            <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">
+            <h1 className="text-2xl font-bold font-display tracking-tight text-neutral-950 dark:text-neutral-50">
               {template.name}
             </h1>
           </div>

@@ -5,6 +5,7 @@ import { ArrowLeft, Search } from "lucide-react";
 import Link from "next/link";
 import { FEATURE_TEMPLATES } from "@/lib/feature-templates";
 import { FeatureCard } from "@/components/feature-card";
+import { PageMenu } from "@/components/page-menu";
 
 const CATEGORIES = ["All", "Tracking", "Directory", "Inventory"] as const;
 
@@ -22,16 +23,19 @@ export default function StorePage() {
   return (
     <div className="flex flex-col gap-6 pt-6 pb-24 animate-fade-in">
       <div className="px-5">
-        <div className="flex items-center gap-3 mb-1">
-          <Link
-            href="/"
-            className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
-          </Link>
-          <h1 className="text-3xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">
-            Feature Store
-          </h1>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
+            </Link>
+            <h1 className="text-3xl font-bold font-display tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">
+              Feature Store
+            </h1>
+          </div>
+          <PageMenu />
         </div>
         <p className="text-sm text-neutral-400 mt-0.5 ml-12">
           Add new capabilities to your app

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { getTasks } from "@/lib/notion";
 import { ErrorDetails } from "@/components/error-details";
+import { PageMenu } from "@/components/page-menu";
 import { PrintButton } from "./print-button";
 import type { Task, Status, Priority, Area } from "@/lib/types";
 
@@ -39,11 +40,14 @@ export default async function ChecklistPage({ searchParams }: PageProps) {
   if (errorState) {
     return (
       <div className="pt-6 pb-24">
-        <div className="px-5 flex items-center gap-3 mb-5">
-          <Link href="/" className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800">
-            <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
-          </Link>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">Checklist</h1>
+        <div className="px-5 flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800">
+              <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
+            </Link>
+            <h1 className="text-2xl font-bold font-display tracking-tight text-neutral-950 dark:text-neutral-50">Checklist</h1>
+          </div>
+          <PageMenu />
         </div>
         <div className="mx-5 p-5 bg-red-50 dark:bg-red-950/30 rounded-2xl">
           <p className="font-semibold text-red-700 dark:text-red-400">Having trouble connecting</p>
@@ -88,16 +92,19 @@ export default async function ChecklistPage({ searchParams }: PageProps) {
             <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
           </Link>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">Checklist</h1>
+            <h1 className="text-2xl font-bold font-display tracking-tight text-neutral-950 dark:text-neutral-50">Checklist</h1>
             <p className="text-sm text-neutral-400">{tasks.length} task{tasks.length !== 1 ? "s" : ""}{totalEstimate > 0 ? ` · ${formatMoney(totalEstimate)} est.` : ""}</p>
           </div>
         </div>
-        <PrintButton />
+        <div className="flex items-center gap-2">
+          <PrintButton />
+          <PageMenu />
+        </div>
       </div>
 
       {/* Print header (hidden on screen) */}
       <div className="hidden print:block px-5 mb-2">
-        <h1 className="text-xl font-bold">Braim Rd — Task Checklist</h1>
+        <h1 className="text-xl font-bold font-display">Braim Rd — Task Checklist</h1>
         <p className="text-sm text-neutral-500">{today}{activeFilters.length > 0 ? ` · Filtered: ${activeFilters.join(", ")}` : ""}</p>
         <p className="text-sm text-neutral-500">{tasks.length} task{tasks.length !== 1 ? "s" : ""}{totalEstimate > 0 ? ` · Total estimate: ${formatMoney(totalEstimate)}` : ""}</p>
       </div>

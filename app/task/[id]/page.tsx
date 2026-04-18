@@ -35,7 +35,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
         >
           <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50 truncate">
+        <h1 className="text-2xl font-bold font-display tracking-tight text-neutral-950 dark:text-neutral-50 truncate">
           {task.task}
         </h1>
       </div>

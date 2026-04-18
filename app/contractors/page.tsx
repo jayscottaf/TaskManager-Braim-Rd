@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, Wrench, Phone, Calendar, DollarSign, ChevronRight } from "lucide-react";
 import { getTasks } from "@/lib/notion";
 import { ErrorDetails } from "@/components/error-details";
+import { PageMenu } from "@/components/page-menu";
 import type { Task } from "@/lib/types";
 
 interface Contractor {
@@ -76,11 +77,14 @@ export default async function ContractorsPage() {
   if (errorState) {
     return (
       <div className="pt-6 pb-24">
-        <div className="px-5 flex items-center gap-3 mb-5">
-          <Link href="/" className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800">
-            <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
-          </Link>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">Contractors</h1>
+        <div className="px-5 flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800">
+              <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
+            </Link>
+            <h1 className="text-2xl font-bold font-display tracking-tight text-neutral-950 dark:text-neutral-50">Contractors</h1>
+          </div>
+          <PageMenu />
         </div>
         <div className="mx-5 p-5 bg-red-50 dark:bg-red-950/30 rounded-2xl">
           <p className="font-semibold text-red-700 dark:text-red-400">Having trouble connecting</p>
@@ -96,14 +100,17 @@ export default async function ContractorsPage() {
   return (
     <div className="flex flex-col gap-5 pt-6 pb-24 animate-fade-in">
       {/* Header */}
-      <div className="px-5 flex items-center gap-3">
-        <Link href="/" className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
-          <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">Contractors</h1>
-          <p className="text-sm text-neutral-400">{contractors.length} vendor{contractors.length !== 1 ? "s" : ""} on file</p>
+      <div className="px-5 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+            <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold font-display tracking-tight text-neutral-950 dark:text-neutral-50">Contractors</h1>
+            <p className="text-sm text-neutral-400">{contractors.length} vendor{contractors.length !== 1 ? "s" : ""} on file</p>
+          </div>
         </div>
+        <PageMenu />
       </div>
 
       {contractors.length === 0 ? (

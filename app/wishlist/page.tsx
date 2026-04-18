@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { WishListItem } from "@/lib/wishlist";
 import type { WishListPlan } from "@/lib/ai";
+import { PageMenu } from "@/components/page-menu";
 import { ProjectPlanner } from "@/components/project-planner";
 import { CostSummary } from "@/components/cost-summary";
 import { RoiBadge } from "@/components/roi-badge";
@@ -454,7 +455,7 @@ export default function WishListPage() {
               <button onClick={() => setEditing(false)} className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
                 <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
               </button>
-              <h1 className="text-xl font-bold text-neutral-950 dark:text-neutral-50">Edit Project</h1>
+              <h1 className="text-xl font-bold font-display text-neutral-950 dark:text-neutral-50">Edit Project</h1>
             </div>
           </div>
           {error && <div className="mx-5 px-4 py-3 bg-red-50 dark:bg-red-950/30 rounded-xl text-sm text-red-600">{error}</div>}
@@ -473,7 +474,7 @@ export default function WishListPage() {
               <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">
+              <h1 className="text-2xl font-bold font-display tracking-tight text-neutral-950 dark:text-neutral-50">
                 {selectedItem.project}
               </h1>
               {isArchived && <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Archived</span>}
@@ -736,13 +737,16 @@ export default function WishListPage() {
             <Link href="/" className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
               <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
             </Link>
-            <h1 className="text-2xl font-bold tracking-tight text-neutral-950 dark:text-neutral-50">Wish List</h1>
+            <h1 className="text-2xl font-bold font-display tracking-tight text-neutral-950 dark:text-neutral-50">Wish List</h1>
           </div>
-          <button onClick={() => { setShowForm(!showForm); setFormData({}); }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.98] transition-all">
-            {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            {showForm ? "Cancel" : "Add"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setShowForm(!showForm); setFormData({}); }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.98] transition-all">
+              {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              {showForm ? "Cancel" : "Add"}
+            </button>
+            <PageMenu />
+          </div>
         </div>
         <p className="text-sm text-neutral-400 mt-0.5 ml-12">Dream projects for Braim Rd</p>
       </div>

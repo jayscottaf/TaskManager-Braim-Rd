@@ -131,7 +131,7 @@ export function TaskCard({ task }: { task: Task }) {
   }
 
   return (
-    <div className="group bg-white dark:bg-neutral-900 rounded-2xl shadow-sm hover:shadow-md dark:shadow-neutral-900/50 p-5 transition-all duration-200">
+    <div className={`group bg-white dark:bg-neutral-900 rounded-2xl shadow-sm hover:shadow-md dark:shadow-neutral-900/50 p-5 transition-all duration-200 ${status === "In Progress" ? "border-l-4 border-l-blue-500" : ""}`}>
       {/* Dropdowns — OUTSIDE the Link so taps don't trigger navigation */}
       <div className="flex items-center gap-2 mb-2">
         <InlineSelect
