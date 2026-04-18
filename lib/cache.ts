@@ -32,4 +32,5 @@ export const CACHE_TTL = {
   AI_PRIORITIZE: 60 * 60 * 1000,  // 1 hour
   AI_SUGGEST: 60 * 60 * 1000,     // 1 hour
   TASK_LIST: 5 * 60 * 1000,       // 5 minutes
+  SCHEMA_SYNC: 60 * 60 * 1000,    // 1 hour
 } as const;

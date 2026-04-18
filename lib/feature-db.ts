@@ -1,6 +1,7 @@
 import { Client } from "@notionhq/client";
 import type { DatabaseObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import type { FieldDefinition } from "./feature-templates";
+import { getCached, setCache, CACHE_TTL } from "./cache";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
@@ -121,6 +122,9 @@ export async function syncDatabaseSchema(
   databaseId: string,
   schema: FieldDefinition[]
 ): Promise<void> {
+  const cacheKey = `schema-sync:${databaseId}:${schema.length}`;
+  if (getCached<boolean>(cacheKey)) return;
+
   const db = await notion.databases.retrieve({
     database_id: databaseId,
   }) as DatabaseObjectResponse;
@@ -152,4 +156,6 @@ export async function syncDatabaseSchema(
       properties: missingProps,
     });
   }
+
+  setCache(cacheKey, true, CACHE_TTL.SCHEMA_SYNC);
 }
