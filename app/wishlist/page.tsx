@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Plus, X, Loader2, ArrowLeft, Pencil, ChevronRight, Archive,
+  Plus, X, Loader2, ArrowLeft, Pencil, Copy, ChevronRight, Archive,
   ArchiveRestore, Trash2, Eye, EyeOff, ArrowUpDown, Rocket, CalendarPlus,
 } from "lucide-react";
 import Link from "next/link";
@@ -36,6 +36,7 @@ export default function WishListPage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const [confirmDeleteWish, setConfirmDeleteWish] = useState(false);
   const [promoteDate, setPromoteDate] = useState("");
   const [promoteEndDate, setPromoteEndDate] = useState("");
   const router = useRouter();
@@ -193,6 +194,42 @@ export default function WishListPage() {
       setSelectedItem(null);
       loadItems(showArchived);
     } catch (e: unknown) { setError((e as Error).message); }
+  }
+
+  async function handleDuplicate(item: WishListItem) {
+    setSaving(true);
+    setError(null);
+    try {
+      const body = {
+        project: `Copy of ${item.project}`,
+        description: item.description || undefined,
+        aiPlan: item.aiPlan || undefined,
+        diyCost: item.diyCost ?? undefined,
+        hiredCost: item.hiredCost ?? undefined,
+        valueAdd: item.valueAdd ?? undefined,
+        diyRoi: item.diyRoi ?? undefined,
+        hiredRoi: item.hiredRoi ?? undefined,
+        diyRoiRating: item.diyRoiRating || undefined,
+        hiredRoiRating: item.hiredRoiRating || undefined,
+        diyDifficulty: item.diyDifficulty || undefined,
+        costMode: item.costMode || undefined,
+        category: item.category || undefined,
+        priority: item.priority || undefined,
+        timeline: item.timeline || undefined,
+        bestSeason: item.bestSeason || undefined,
+        photos: item.photos.length > 0 ? item.photos : undefined,
+        notes: item.notes || undefined,
+      };
+      await fetch("/api/wishlist", {
+        method: "POST", headers: headers(), body: JSON.stringify(body),
+      });
+      setSelectedItem(null);
+      loadItems(showArchived);
+    } catch (e: unknown) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Map wish list category to task area/type
@@ -442,31 +479,37 @@ export default function WishListPage() {
             </div>
           </div>
           {!isArchived && (
-            <button onClick={() => {
-              setFormData({
-                project: selectedItem.project,
-                description: selectedItem.description || "",
-                aiPlan: selectedItem.aiPlan || "",
-                diyCost: selectedItem.diyCost != null ? String(selectedItem.diyCost) : "",
-                hiredCost: selectedItem.hiredCost != null ? String(selectedItem.hiredCost) : "",
-                valueAdd: selectedItem.valueAdd != null ? String(selectedItem.valueAdd) : "",
-                diyRoi: selectedItem.diyRoi != null ? String(selectedItem.diyRoi) : "",
-                hiredRoi: selectedItem.hiredRoi != null ? String(selectedItem.hiredRoi) : "",
-                diyRoiRating: selectedItem.diyRoiRating || "",
-                hiredRoiRating: selectedItem.hiredRoiRating || "",
-                diyDifficulty: selectedItem.diyDifficulty || "",
-                costMode: selectedItem.costMode || "DIY",
-                category: selectedItem.category || "",
-                priority: selectedItem.priority || "",
-                timeline: selectedItem.timeline || "",
-                bestSeason: selectedItem.bestSeason || "",
-                photos: selectedItem.photos.length > 0 ? JSON.stringify(selectedItem.photos) : "",
-                notes: selectedItem.notes || "",
-              });
-              setEditing(true);
-            }} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.98] transition-all">
-              <Pencil className="w-4 h-4" /> Edit
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => handleDuplicate(selectedItem)} disabled={saving}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 text-sm font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 active:scale-[0.98] transition-all disabled:opacity-50">
+                <Copy className="w-4 h-4" /> Duplicate
+              </button>
+              <button onClick={() => {
+                setFormData({
+                  project: selectedItem.project,
+                  description: selectedItem.description || "",
+                  aiPlan: selectedItem.aiPlan || "",
+                  diyCost: selectedItem.diyCost != null ? String(selectedItem.diyCost) : "",
+                  hiredCost: selectedItem.hiredCost != null ? String(selectedItem.hiredCost) : "",
+                  valueAdd: selectedItem.valueAdd != null ? String(selectedItem.valueAdd) : "",
+                  diyRoi: selectedItem.diyRoi != null ? String(selectedItem.diyRoi) : "",
+                  hiredRoi: selectedItem.hiredRoi != null ? String(selectedItem.hiredRoi) : "",
+                  diyRoiRating: selectedItem.diyRoiRating || "",
+                  hiredRoiRating: selectedItem.hiredRoiRating || "",
+                  diyDifficulty: selectedItem.diyDifficulty || "",
+                  costMode: selectedItem.costMode || "DIY",
+                  category: selectedItem.category || "",
+                  priority: selectedItem.priority || "",
+                  timeline: selectedItem.timeline || "",
+                  bestSeason: selectedItem.bestSeason || "",
+                  photos: selectedItem.photos.length > 0 ? JSON.stringify(selectedItem.photos) : "",
+                  notes: selectedItem.notes || "",
+                });
+                setEditing(true);
+              }} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.98] transition-all">
+                <Pencil className="w-4 h-4" /> Edit
+              </button>
+            </div>
           )}
         </div>
 
@@ -609,9 +652,16 @@ export default function WishListPage() {
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400 text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-950/30 active:scale-[0.98] transition-all">
                   <ArchiveRestore className="w-4 h-4" /> Restore
                 </button>
-                <button onClick={() => { if (confirm("Permanently delete this project?")) handleDelete(selectedItem.id); }}
-                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-950/30 active:scale-[0.98] transition-all">
-                  <Trash2 className="w-4 h-4" />
+                <button onClick={() => {
+                    if (!confirmDeleteWish) { setConfirmDeleteWish(true); setTimeout(() => setConfirmDeleteWish(false), 3000); return; }
+                    handleDelete(selectedItem.id); setConfirmDeleteWish(false);
+                  }}
+                  className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium active:scale-[0.98] transition-all ${
+                    confirmDeleteWish
+                      ? "bg-red-600 border-red-600 text-white"
+                      : "border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
+                  }`}>
+                  <Trash2 className="w-4 h-4" /> {confirmDeleteWish ? "Confirm" : ""}
                 </button>
               </div>
             ) : (
@@ -656,9 +706,16 @@ export default function WishListPage() {
                   className="flex items-center justify-center gap-2 py-2.5 rounded-xl border border-amber-200 dark:border-amber-900 text-amber-600 dark:text-amber-400 text-sm font-medium hover:bg-amber-50 dark:hover:bg-amber-950/30 active:scale-[0.98] transition-all">
                   <Archive className="w-4 h-4" /> Archive
                 </button>
-                <button onClick={() => { if (confirm("Are you sure you want to permanently delete this?\n\nTip: Use Archive instead to hide it while keeping the data.")) handleDelete(selectedItem.id); }}
-                  className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-neutral-400 text-xs hover:text-red-500 transition-colors">
-                  <Trash2 className="w-3.5 h-3.5" /> Delete permanently
+                <button onClick={() => {
+                    if (!confirmDeleteWish) { setConfirmDeleteWish(true); setTimeout(() => setConfirmDeleteWish(false), 3000); return; }
+                    handleDelete(selectedItem.id); setConfirmDeleteWish(false);
+                  }}
+                  className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs transition-all ${
+                    confirmDeleteWish
+                      ? "bg-red-600 text-white font-medium"
+                      : "text-neutral-400 hover:text-red-500"
+                  }`}>
+                  <Trash2 className="w-3.5 h-3.5" /> {confirmDeleteWish ? "Tap again to delete" : "Delete permanently"}
                 </button>
               </>
             )}
@@ -702,6 +759,32 @@ export default function WishListPage() {
               {renderForm("Save to Wish List", handleSave)}
             </>
           )}
+        </div>
+      )}
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="mx-5 flex items-center justify-between bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-xl px-4 py-3">
+          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                for (const id of selectedIds) await handleAction(id, "archive");
+                setSelectedIds(new Set());
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-medium hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors"
+            >
+              <Archive className="w-3.5 h-3.5" /> Archive
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-neutral-500 text-xs font-medium hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
         </div>
       )}
 

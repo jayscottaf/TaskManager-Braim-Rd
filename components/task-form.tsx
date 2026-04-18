@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { showToast } from "@/components/toast";
 import type {
   Task,
   CreateTaskInput,
@@ -29,6 +30,7 @@ export function TaskForm({ task, mode }: TaskFormProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [name, setName] = useState(task?.task ?? "");
   const [status, setStatus] = useState<Status>(task?.status ?? "Not Started");
@@ -133,7 +135,9 @@ export function TaskForm({ task, mode }: TaskFormProps) {
       const data = await res.json();
       if (data.nextOccurrence) {
         const next = data.nextOccurrence;
-        alert(`Task completed! Next occurrence "${next.task}" created for ${next.dueDate?.start}.`);
+        showToast(`Next occurrence scheduled for ${next.dueDate?.start ?? "soon"}`, "info");
+      } else {
+        showToast("Task completed!", "success");
       }
       router.push("/");
       router.refresh();
@@ -145,7 +149,12 @@ export function TaskForm({ task, mode }: TaskFormProps) {
   }
 
   async function handleDelete() {
-    if (!task || !confirm("Delete this task?")) return;
+    if (!task) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 3000);
+      return;
+    }
     setSaving(true);
     try {
       const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
@@ -426,9 +435,13 @@ export function TaskForm({ task, mode }: TaskFormProps) {
             type="button"
             onClick={handleDelete}
             disabled={saving}
-            className="w-full py-3 rounded-xl text-red-500 font-medium text-base disabled:opacity-50 hover:bg-red-50 active:bg-red-100 transition-all"
+            className={`w-full py-3 rounded-xl font-medium text-base disabled:opacity-50 transition-all ${
+              confirmDelete
+                ? "bg-red-600 text-white hover:bg-red-700"
+                : "text-red-500 hover:bg-red-50 active:bg-red-100"
+            }`}
           >
-            Delete Task
+            {confirmDelete ? "Tap again to delete" : "Delete Task"}
           </button>
         )}
       </div>

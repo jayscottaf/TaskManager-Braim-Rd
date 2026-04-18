@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { format, isPast, isWithinInterval, addDays } from "date-fns";
+import { format, isPast, isWithinInterval, addDays, isToday, isTomorrow, isYesterday, differenceInDays } from "date-fns";
 import { ChevronRight, Calendar, DollarSign, MapPin, Repeat } from "lucide-react";
 import type { Task, Priority, Status } from "@/lib/types";
 import { PRIORITIES, STATUSES } from "@/lib/types";
@@ -21,6 +21,17 @@ const STATUS_COLORS: Record<Status, string> = {
   "On Hold": "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800",
   Completed: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800",
 };
+
+function formatRelativeDate(date: Date): string {
+  const now = new Date();
+  if (isToday(date)) return "Today";
+  if (isTomorrow(date)) return "Tomorrow";
+  if (isYesterday(date)) return "Yesterday";
+  const diff = differenceInDays(date, now);
+  if (diff > 0 && diff <= 7) return `in ${diff} days`;
+  if (diff < 0 && diff >= -7) return `${Math.abs(diff)} days ago`;
+  return format(date, "MMM d");
+}
 
 function DueDateLabel({ dueDate, status }: { dueDate: Task["dueDate"]; status: string }) {
   if (!dueDate) return null;
@@ -41,7 +52,7 @@ function DueDateLabel({ dueDate, status }: { dueDate: Task["dueDate"]; status: s
     >
       <Calendar className="w-3 h-3" />
       {overdue ? "Overdue: " : ""}
-      {format(date, "MMM d")}
+      {formatRelativeDate(date)}
       {dueDate.end ? ` – ${format(new Date(dueDate.end + "T00:00:00"), "MMM d")}` : ""}
     </span>
   );

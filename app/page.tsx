@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
+import { ErrorDetails } from "@/components/error-details";
 import { getTasks } from "@/lib/notion";
 import { TaskCard } from "@/components/task-card";
 import { TaskFilters } from "@/components/task-filters";
@@ -78,12 +79,9 @@ async function TaskList({
     const e = err as { code?: string; status?: number; message?: string };
     return (
       <div className="mx-5 p-5 bg-red-50 dark:bg-red-950/30 rounded-2xl">
-        <p className="font-semibold text-red-700">Notion API Error</p>
-        <p className="text-sm text-red-600 mt-1">{e.message}</p>
-        {e.code && <p className="text-xs text-neutral-500 mt-1">Code: {e.code}</p>}
-        <p className="text-xs text-neutral-400 mt-2">
-          Check: NOTION_API_KEY and NOTION_DATABASE_ID in Vercel env vars.
-        </p>
+        <p className="font-semibold text-red-700 dark:text-red-400">Having trouble connecting</p>
+        <p className="text-sm text-red-600 dark:text-red-400/80 mt-1">Try refreshing in a moment.</p>
+        <ErrorDetails message={e.message} code={e.code} />
       </div>
     );
   }
