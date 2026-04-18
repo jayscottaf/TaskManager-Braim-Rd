@@ -15,7 +15,7 @@ import {
   subMonths,
   isPast,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Repeat } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Repeat } from "lucide-react";
 import type { Task, Priority } from "@/lib/types";
 import { generateOccurrences } from "@/lib/recurrence";
 import Link from "next/link";
@@ -226,7 +226,15 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
             )}
           </h3>
           {selectedTasks.length === 0 ? (
-            <p className="text-sm text-gray-400">No tasks on this day</p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-400">No tasks on this day</p>
+              <Link
+                href={`/add?dueDate=${format(selectedDate, "yyyy-MM-dd")}`}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 active:scale-[0.98] transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add task
+              </Link>
+            </div>
           ) : (
             <div className="flex flex-col gap-2">
               {selectedTasks.map((t) => {
