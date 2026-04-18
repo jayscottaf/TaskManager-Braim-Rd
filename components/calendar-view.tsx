@@ -90,7 +90,7 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
 
   function getTasksForDay(day: Date): Task[] {
     return allTasks.filter((t) => {
-      if (!t.dueDate) return false;
+      if (!t.dueDate || !t.dueDate.start) return false;
       const start = new Date(t.dueDate.start + "T00:00:00");
       if (t.dueDate.end) {
         const end = new Date(t.dueDate.end + "T00:00:00");
@@ -156,7 +156,12 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
           const isToday = isSameDay(day, today);
           const isSelected = selectedDate && isSameDay(day, selectedDate);
           const hasOverdue = dayTasks.some(
-            (t) => t.status !== "Completed" && isPast(new Date(t.dueDate!.start + "T00:00:00")) && t.dueDate!.start < format(today, "yyyy-MM-dd")
+            (t) =>
+              t.status !== "Completed" &&
+              t.dueDate &&
+              t.dueDate.start &&
+              isPast(new Date(t.dueDate.start + "T00:00:00")) &&
+              t.dueDate.start < format(today, "yyyy-MM-dd")
           );
 
           return (

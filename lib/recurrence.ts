@@ -1,7 +1,9 @@
 import type { Frequency, Task } from "./types";
 
 export function advanceDate(dateStr: string, frequency: Frequency): string {
+  if (!dateStr) return "";
   const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return "";
   switch (frequency) {
     case "Monthly":
       d.setMonth(d.getMonth() + 1);
@@ -32,13 +34,15 @@ export function generateOccurrences(
     !task.frequency ||
     task.frequency === "One-time" ||
     task.status === "Completed" ||
-    !task.dueDate
+    !task.dueDate ||
+    !task.dueDate.start
   ) {
     return [];
   }
 
   const occurrences: Task[] = [];
   let cursor = advanceDate(task.dueDate.start, task.frequency);
+  if (!cursor) return [];
 
   // Project forward up to 50 iterations (safety cap)
   for (let i = 0; i < 50; i++) {
@@ -55,6 +59,7 @@ export function generateOccurrences(
       });
     }
     cursor = advanceDate(cursor, task.frequency);
+    if (!cursor) break;
   }
 
   return occurrences;
