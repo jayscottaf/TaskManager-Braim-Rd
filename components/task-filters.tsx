@@ -9,7 +9,7 @@ const TIME_RANGES = [
   { label: "7d", value: "7" },
   { label: "30d", value: "30" },
   { label: "90d", value: "90" },
-  { label: "All", value: "" },
+  { label: "All", value: "0" },
 ] as const;
 
 export const DEFAULT_RANGE = "30";
