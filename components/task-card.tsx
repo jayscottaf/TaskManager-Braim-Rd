@@ -120,66 +120,70 @@ export function TaskCard({ task }: { task: Task }) {
   }
 
   return (
-    <Link
-      href={`/task/${task.id}`}
-      className="group block bg-white dark:bg-neutral-900 rounded-2xl shadow-sm hover:shadow-md dark:shadow-neutral-900/50 p-5 transition-all duration-200 active:scale-[0.99]"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
-            <InlineSelect
-              value={priority}
-              options={PRIORITIES}
-              colors={PRIORITY_COLORS}
-              onChange={handlePriorityChange}
-            />
-            <InlineSelect
-              value={status}
-              options={STATUSES}
-              colors={STATUS_COLORS}
-              onChange={handleStatusChange}
-            />
-          </div>
-          <h3 className="text-[15px] font-semibold text-neutral-950 dark:text-neutral-50 truncate">{task.task}</h3>
-
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
-            {task.area && (
-              <span className="inline-flex items-center gap-1 text-xs text-neutral-500">
-                <MapPin className="w-3 h-3" />
-                {task.area}
-                {task.subLocation ? ` · ${task.subLocation}` : ""}
-              </span>
-            )}
-            <DueDateLabel dueDate={task.dueDate} status={status} />
-            {task.frequency && task.frequency !== "One-time" && (
-              <span className="inline-flex items-center gap-1 text-xs text-neutral-400">
-                <Repeat className="w-3 h-3" />
-                {task.frequency}
-              </span>
-            )}
-            {task.costEstimate !== null && (
-              <span className="inline-flex items-center gap-1 text-xs text-neutral-500">
-                <DollarSign className="w-3 h-3" />
-                {task.costEstimate.toLocaleString()}
-              </span>
-            )}
-          </div>
-
-          {task.type.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2.5">
-              {task.type.map((t) => (
-                <span
-                  key={t}
-                  className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 rounded-md text-[11px] font-medium"
-                >
-                  {t}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-neutral-500 flex-shrink-0 mt-1 transition-colors" />
+    <div className="group bg-white dark:bg-neutral-900 rounded-2xl shadow-sm hover:shadow-md dark:shadow-neutral-900/50 p-5 transition-all duration-200">
+      {/* Dropdowns — OUTSIDE the Link so taps don't trigger navigation */}
+      <div className="flex items-center gap-2 mb-2">
+        <InlineSelect
+          value={priority}
+          options={PRIORITIES}
+          colors={PRIORITY_COLORS}
+          onChange={handlePriorityChange}
+        />
+        <InlineSelect
+          value={status}
+          options={STATUSES}
+          colors={STATUS_COLORS}
+          onChange={handleStatusChange}
+        />
       </div>
-    </Link>
+
+      <Link
+        href={`/task/${task.id}`}
+        className="block active:scale-[0.99] transition-transform"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[15px] font-semibold text-neutral-950 dark:text-neutral-50 truncate">{task.task}</h3>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
+              {task.area && (
+                <span className="inline-flex items-center gap-1 text-xs text-neutral-500">
+                  <MapPin className="w-3 h-3" />
+                  {task.area}
+                  {task.subLocation ? ` · ${task.subLocation}` : ""}
+                </span>
+              )}
+              <DueDateLabel dueDate={task.dueDate} status={status} />
+              {task.frequency && task.frequency !== "One-time" && (
+                <span className="inline-flex items-center gap-1 text-xs text-neutral-400">
+                  <Repeat className="w-3 h-3" />
+                  {task.frequency}
+                </span>
+              )}
+              {task.costEstimate !== null && (
+                <span className="inline-flex items-center gap-1 text-xs text-neutral-500">
+                  <DollarSign className="w-3 h-3" />
+                  {task.costEstimate.toLocaleString()}
+                </span>
+              )}
+            </div>
+
+            {task.type.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                {task.type.map((t) => (
+                  <span
+                    key={t}
+                    className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 rounded-md text-[11px] font-medium"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-neutral-500 flex-shrink-0 mt-1 transition-colors" />
+        </div>
+      </Link>
+    </div>
   );
 }
