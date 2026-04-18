@@ -13,9 +13,12 @@ import {
   isWithinInterval,
   addMonths,
   subMonths,
+  addWeeks,
+  subWeeks,
+  addDays,
   isPast,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, Repeat } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Repeat, CalendarDays, CalendarRange, List } from "lucide-react";
 import type { Task, Priority } from "@/lib/types";
 import { generateOccurrences } from "@/lib/recurrence";
 import Link from "next/link";
@@ -68,17 +71,20 @@ function MobileTaskDot({ task }: { task: Task }) {
   );
 }
 
+type ViewMode = "month" | "week" | "agenda";
+
 export function CalendarView({ tasks }: { tasks: Task[] }) {
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date()));
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
-  const calStart = startOfWeek(monthStart);
-  const calEnd = endOfWeek(monthEnd);
+  const calStart = viewMode === "week" ? currentWeekStart : viewMode === "agenda" ? new Date() : startOfWeek(monthStart);
+  const calEnd = viewMode === "week" ? endOfWeek(currentWeekStart) : viewMode === "agenda" ? addDays(new Date(), 13) : endOfWeek(monthEnd);
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
 
-  // Expand recurring tasks into virtual instances for the visible range
   const allTasks = useMemo(() => {
     const rangeStart = format(calStart, "yyyy-MM-dd");
     const rangeEnd = format(calEnd, "yyyy-MM-dd");
@@ -108,38 +114,159 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
 
   const today = new Date();
 
+  function navigateBack() {
+    if (viewMode === "week") setCurrentWeekStart(subWeeks(currentWeekStart, 1));
+    else setCurrentMonth(subMonths(currentMonth, 1));
+  }
+  function navigateForward() {
+    if (viewMode === "week") setCurrentWeekStart(addWeeks(currentWeekStart, 1));
+    else setCurrentMonth(addMonths(currentMonth, 1));
+  }
+  function navigateToday() {
+    setCurrentMonth(new Date());
+    setCurrentWeekStart(startOfWeek(new Date()));
+  }
+
+  const navTitle = viewMode === "week"
+    ? `${format(currentWeekStart, "MMM d")} – ${format(endOfWeek(currentWeekStart), "MMM d, yyyy")}`
+    : format(currentMonth, "MMMM yyyy");
+
+  const showTodayBtn = viewMode === "week"
+    ? !isSameDay(currentWeekStart, startOfWeek(new Date()))
+    : !isSameMonth(currentMonth, today);
+
   return (
     <div className="flex flex-col gap-3">
-      {/* Month navigation */}
-      <div className="flex items-center justify-between px-4">
-        <button
-          onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-          className="p-2 rounded-full active:bg-gray-100 dark:active:bg-neutral-800"
-        >
-          <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-neutral-400" />
-        </button>
-        <div className="flex items-center gap-3">
-          <h2 className="font-semibold text-gray-900 dark:text-neutral-50">
-            {format(currentMonth, "MMMM yyyy")}
-          </h2>
-          {!isSameMonth(currentMonth, today) && (
-            <button
-              onClick={() => setCurrentMonth(new Date())}
-              className="text-xs text-blue-600 dark:text-blue-400 font-medium px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-950/30"
-            >
-              Today
-            </button>
-          )}
-        </div>
-        <button
-          onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-          className="p-2 rounded-full active:bg-gray-100 dark:active:bg-neutral-800"
-        >
-          <ChevronRight className="w-5 h-5 text-gray-600 dark:text-neutral-400" />
-        </button>
+      {/* View toggle */}
+      <div className="flex items-center justify-center gap-1 px-4">
+        {([
+          { mode: "month" as ViewMode, icon: CalendarDays, label: "Month" },
+          { mode: "week" as ViewMode, icon: CalendarRange, label: "Week" },
+          { mode: "agenda" as ViewMode, icon: List, label: "Agenda" },
+        ]).map(({ mode, icon: Icon, label }) => (
+          <button
+            key={mode}
+            onClick={() => setViewMode(mode)}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              viewMode === mode
+                ? "bg-blue-600 text-white"
+                : "text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* Day headers */}
+      {/* Navigation (month & week only) */}
+      {viewMode !== "agenda" && (
+        <div className="flex items-center justify-between px-4">
+          <button onClick={navigateBack} className="p-2 rounded-full active:bg-gray-100 dark:active:bg-neutral-800">
+            <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-neutral-400" />
+          </button>
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold text-gray-900 dark:text-neutral-50">{navTitle}</h2>
+            {showTodayBtn && (
+              <button
+                onClick={navigateToday}
+                className="text-xs text-blue-600 dark:text-blue-400 font-medium px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+              >
+                Today
+              </button>
+            )}
+          </div>
+          <button onClick={navigateForward} className="p-2 rounded-full active:bg-gray-100 dark:active:bg-neutral-800">
+            <ChevronRight className="w-5 h-5 text-gray-600 dark:text-neutral-400" />
+          </button>
+        </div>
+      )}
+
+      {/* Agenda view */}
+      {viewMode === "agenda" && (
+        <div className="px-4">
+          <h2 className="font-semibold text-gray-900 dark:text-neutral-50 mb-3">Next 14 days</h2>
+          <div className="flex flex-col gap-2">
+            {days.map((day) => {
+              const dayTasks = getTasksForDay(day);
+              const isToday2 = isSameDay(day, today);
+              return (
+                <div key={day.toISOString()}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs font-semibold ${isToday2 ? "text-blue-600 dark:text-blue-400" : "text-neutral-500 dark:text-neutral-400"}`}>
+                      {format(day, "EEE, MMM d")}
+                      {isToday2 && " · Today"}
+                    </span>
+                    {dayTasks.length === 0 && <span className="text-xs text-neutral-300 dark:text-neutral-600">—</span>}
+                  </div>
+                  {dayTasks.length > 0 && (
+                    <div className="flex flex-col gap-1 ml-2 mb-2">
+                      {dayTasks.map((t) => {
+                        const colors = t.priority ? PRIORITY_COLORS[t.priority] : DEFAULT_COLORS;
+                        return (
+                          <Link
+                            key={t.id}
+                            href={`/task/${realId(t)}`}
+                            className={`flex items-center gap-2 p-2 rounded-lg border-l-2 ${colors.border} ${colors.bg} text-sm hover:brightness-95 transition-all`}
+                          >
+                            {isVirtual(t) && <Repeat className="w-3 h-3 opacity-50 flex-shrink-0" />}
+                            <span className={`flex-1 truncate ${colors.text} ${STATUS_STYLES[t.status] || ""}`}>{t.task}</span>
+                            {t.costEstimate != null && <span className="text-xs text-neutral-400 flex-shrink-0">${t.costEstimate}</span>}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Week view */}
+      {viewMode === "week" && (
+        <div className="px-2 flex flex-col gap-2">
+          {days.map((day) => {
+            const dayTasks = getTasksForDay(day);
+            const isToday2 = isSameDay(day, today);
+            const isSelected = selectedDate && isSameDay(day, selectedDate);
+            return (
+              <div
+                key={day.toISOString()}
+                className={`bg-white dark:bg-neutral-900 rounded-lg p-3 border transition-colors ${
+                  isSelected ? "border-blue-500 ring-1 ring-blue-500" : "border-neutral-200 dark:border-neutral-800"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-sm font-semibold ${isToday2 ? "text-blue-600 dark:text-blue-400" : "text-neutral-700 dark:text-neutral-200"}`}>
+                    {format(day, "EEEE, MMM d")}
+                  </span>
+                  <span className="text-xs text-neutral-400">{dayTasks.length > 0 ? `${dayTasks.length} task${dayTasks.length > 1 ? "s" : ""}` : ""}</span>
+                </div>
+                {dayTasks.length > 0 ? (
+                  <div className="flex flex-col gap-1">
+                    {dayTasks.map((t) => <TaskPill key={t.id} task={t} />)}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-neutral-400 dark:text-neutral-500">No tasks</p>
+                    <Link
+                      href={`/add?dueDate=${format(day, "yyyy-MM-dd")}`}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-600 text-white text-[10px] font-medium hover:bg-blue-700 transition-all"
+                    >
+                      <Plus className="w-3 h-3" /> Add
+                    </Link>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Month view */}
+      {viewMode === "month" && <>
       <div className="grid grid-cols-7 text-center px-2">
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
           <div key={d} className="text-xs font-medium text-gray-400 py-1">
@@ -292,6 +419,7 @@ export function CalendarView({ tasks }: { tasks: Task[] }) {
           )}
         </div>
       )}
+      </>}
     </div>
   );
 }

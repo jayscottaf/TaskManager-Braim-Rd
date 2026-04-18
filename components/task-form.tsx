@@ -31,6 +31,9 @@ export function TaskForm({ task, mode }: TaskFormProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showCompletePhoto, setShowCompletePhoto] = useState(false);
+  const [afterPhotoUrl, setAfterPhotoUrl] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [name, setName] = useState(task?.task ?? "");
   const [status, setStatus] = useState<Status>(task?.status ?? "Not Started");
@@ -116,21 +119,47 @@ export function TaskForm({ task, mode }: TaskFormProps) {
     }
   }
 
-  async function handleMarkComplete() {
+  async function uploadAfterPhoto(file: File): Promise<void> {
+    setUploadingPhoto(true);
+    try {
+      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: secret ? { "x-app-secret": secret } : {},
+        body: formData,
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const data = await res.json();
+      setAfterPhotoUrl(data.url);
+    } catch {
+      setError("Photo upload failed.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  async function handleMarkComplete(photoUrl?: string | null) {
     if (!task) return;
     setSaving(true);
     try {
       const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+      const updatedNotes = photoUrl
+        ? `${notes || ""}\n\nAfter photo: ${photoUrl}`.trim()
+        : undefined;
+      const body: Record<string, unknown> = {
+        status: "Completed" as Status,
+        dateCompleted: { start: new Date().toISOString().split("T")[0] },
+      };
+      if (updatedNotes) body.notes = updatedNotes;
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           ...(secret ? { "x-app-secret": secret } : {}),
         },
-        body: JSON.stringify({
-          status: "Completed" as Status,
-          dateCompleted: { start: new Date().toISOString().split("T")[0] },
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.nextOccurrence) {
@@ -419,15 +448,56 @@ export function TaskForm({ task, mode }: TaskFormProps) {
           {saving ? "Saving..." : mode === "create" ? "Create Task" : "Save Changes"}
         </button>
 
-        {mode === "edit" && task?.status !== "Completed" && (
+        {mode === "edit" && task?.status !== "Completed" && !showCompletePhoto && (
           <button
             type="button"
-            onClick={handleMarkComplete}
+            onClick={() => setShowCompletePhoto(true)}
             disabled={saving}
             className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold text-base disabled:opacity-50 hover:bg-emerald-700 active:scale-[0.99] transition-all"
           >
             Mark Complete
           </button>
+        )}
+
+        {showCompletePhoto && (
+          <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl p-4 border border-emerald-200 dark:border-emerald-900 flex flex-col gap-3">
+            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Add an &quot;after&quot; photo? (optional)</p>
+            {afterPhotoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={afterPhotoUrl} alt="After photo" className="w-full max-h-48 object-contain rounded-lg" />
+            ) : (
+              <label className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-emerald-300 dark:border-emerald-700 cursor-pointer text-sm text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/40 transition-colors ${uploadingPhoto ? "opacity-50 pointer-events-none" : ""}`}>
+                {uploadingPhoto ? "Uploading..." : "Tap to take or select photo"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadAfterPhoto(file);
+                  }}
+                />
+              </label>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setShowCompletePhoto(false); setAfterPhotoUrl(null); }}
+                className="flex-1 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-500 text-sm font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleMarkComplete(afterPhotoUrl)}
+                disabled={saving || uploadingPhoto}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98] transition-all"
+              >
+                {saving ? "Completing..." : afterPhotoUrl ? "Complete with photo" : "Complete without photo"}
+              </button>
+            </div>
+          </div>
         )}
 
         {mode === "edit" && (

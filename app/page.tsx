@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
 import Link from "next/link";
-import { DollarSign, Wrench } from "lucide-react";
+import { DollarSign, Wrench, CheckCircle, Printer } from "lucide-react";
 import { ErrorDetails } from "@/components/error-details";
 import { getTasks } from "@/lib/notion";
 import { TaskCard } from "@/components/task-card";
@@ -148,6 +148,20 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           <p className="text-sm text-neutral-400 mt-0.5">Home Maintenance Tracker</p>
         </div>
         <div className="flex items-center gap-1">
+          <Link
+            href="/checklist"
+            aria-label="Printable checklist"
+            className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 transition-colors"
+          >
+            <Printer className="w-5 h-5" />
+          </Link>
+          <Link
+            href="/done"
+            aria-label="Completion history"
+            className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 transition-colors"
+          >
+            <CheckCircle className="w-5 h-5" />
+          </Link>
           <Link
             href="/spending"
             aria-label="Spending dashboard"
