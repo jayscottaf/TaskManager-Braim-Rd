@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { Suspense } from "react";
 import { PageMenu } from "@/components/page-menu";
 import { ErrorDetails } from "@/components/error-details";
-import { getTasks } from "@/lib/notion";
+import { getTasks, ensureNotesProperty } from "@/lib/notion";
 import { TaskCard } from "@/components/task-card";
 import { TaskSection } from "@/components/task-section";
 import { TaskFilters } from "@/components/task-filters";
@@ -34,6 +34,7 @@ async function DashboardContent({
 }) {
   let tasks;
   try {
+    await ensureNotesProperty();
     tasks = await getTasks({
       status,
       priority,

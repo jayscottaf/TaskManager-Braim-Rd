@@ -138,6 +138,7 @@ const DB_PROPERTIES = {
     },
   },
   Photos: { rich_text: {} },
+  Tags: { multi_select: { options: [] } },
   Notes: { rich_text: {} },
   _Status: {
     select: {

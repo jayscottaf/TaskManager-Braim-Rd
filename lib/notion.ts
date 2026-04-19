@@ -333,22 +333,26 @@ export async function deleteTask(id: string): Promise<void> {
   invalidateTasksCache();
 }
 
-// Ensure the "Notes" property exists in the database
-let notesPropertyEnsured = false;
+// Ensure the "Notes" and "Tags" properties exist in the database
+let propertiesEnsured = false;
 export async function ensureNotesProperty(): Promise<void> {
-  if (notesPropertyEnsured) return;
+  if (propertiesEnsured) return;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = (await notion.databases.retrieve({ database_id: databaseId })) as any;
-    if (!db.properties?.["Notes"]) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const missing: Record<string, any> = {};
+    if (!db.properties?.["Notes"]) missing.Notes = { rich_text: {} };
+    if (!db.properties?.["Tags"]) missing.Tags = { multi_select: { options: [] } };
+    if (Object.keys(missing).length > 0) {
       await notion.databases.update({
         database_id: databaseId,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        properties: { Notes: { rich_text: {} } } as any,
+        properties: missing as any,
       });
     }
-    notesPropertyEnsured = true;
+    propertiesEnsured = true;
   } catch {
-    // Non-critical — notes will just be unavailable
+    // Non-critical — missing properties will just render as empty
   }
 }
