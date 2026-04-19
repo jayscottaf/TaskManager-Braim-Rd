@@ -44,18 +44,21 @@ export function CameraCapture({ onClassified }: CameraCaptureProps) {
       const blobUrl = await uploadPhoto(file);
       if (!blobUrl) throw new Error("Upload failed");
 
-      const newPhotos = [...photos, blobUrl];
-      setPhotos(newPhotos);
+      let newPhotos: string[] = [];
+      setPhotos((prev) => {
+        newPhotos = [...prev, blobUrl];
+        return newPhotos;
+      });
 
       if (!classified) {
-        const formData = new FormData();
-        formData.append("image", file);
-        if (contextText.trim()) formData.append("context", contextText.trim());
+        const classifyData = new FormData();
+        classifyData.append("image", file);
+        if (contextText.trim()) classifyData.append("context", contextText.trim());
         const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
         const res = await fetch("/api/ai/classify", {
           method: "POST",
           headers: secret ? { "x-app-secret": secret } : {},
-          body: formData,
+          body: classifyData,
         });
         if (!res.ok) throw new Error("Classification failed");
         const result: PhotoClassification = await res.json();

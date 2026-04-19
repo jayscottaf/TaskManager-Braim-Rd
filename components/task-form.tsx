@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { showToast } from "@/components/toast";
@@ -68,6 +68,12 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
     initialPhotoUrls ?? extractPhotoUrls(task?.notes ?? null)
   );
   const [addingPhoto, setAddingPhoto] = useState(false);
+
+  useEffect(() => {
+    if (initialPhotoUrls && initialPhotoUrls.length > 0) {
+      setTaskPhotos(initialPhotoUrls);
+    }
+  }, [initialPhotoUrls]);
 
   async function addTaskPhoto(file: File) {
     setAddingPhoto(true);
