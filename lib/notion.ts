@@ -33,25 +33,25 @@ function richTextChunks(text: string): { text: { content: string } }[] {
 
 function getTitle(page: PageObjectResponse): string {
   const prop = page.properties["Task"];
-  if (prop.type === "title") return prop.title.map((t) => t.plain_text).join("");
+  if (prop?.type === "title") return prop.title.map((t) => t.plain_text).join("");
   return "";
 }
 
 function getSelect(page: PageObjectResponse, name: string): string | null {
   const prop = page.properties[name];
-  if (prop.type === "select") return prop.select?.name ?? null;
+  if (prop?.type === "select") return prop.select?.name ?? null;
   return null;
 }
 
 function getStatus(page: PageObjectResponse): Status {
   const prop = page.properties["Status"];
-  if (prop.type === "status") return (prop.status?.name as Status) ?? "Not Started";
+  if (prop?.type === "status") return (prop.status?.name as Status) ?? "Not Started";
   return "Not Started";
 }
 
 function getMultiSelect(page: PageObjectResponse, name: string): string[] {
   const prop = page.properties[name];
-  if (prop.type === "multi_select") return prop.multi_select.map((o) => o.name);
+  if (prop?.type === "multi_select") return prop.multi_select.map((o) => o.name);
   return [];
 }
 
@@ -60,7 +60,7 @@ function getDate(
   name: string
 ): { start: string; end?: string } | null {
   const prop = page.properties[name];
-  if (prop.type === "date" && prop.date) {
+  if (prop?.type === "date" && prop.date) {
     return {
       start: prop.date.start,
       ...(prop.date.end ? { end: prop.date.end } : {}),
@@ -71,7 +71,7 @@ function getDate(
 
 function getNumber(page: PageObjectResponse, name: string): number | null {
   const prop = page.properties[name];
-  if (prop.type === "number") return prop.number;
+  if (prop?.type === "number") return prop.number;
   return null;
 }
 
@@ -85,7 +85,7 @@ function getText(page: PageObjectResponse, name: string): string | null {
 
 function getPeople(page: PageObjectResponse, name: string): string[] {
   const prop = page.properties[name];
-  if (prop.type === "people") return prop.people.map((p) => p.id);
+  if (prop?.type === "people") return prop.people.map((p) => p.id);
   return [];
 }
 
