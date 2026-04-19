@@ -14,6 +14,7 @@ export function CameraCapture({ onClassified }: CameraCaptureProps) {
   const [previews, setPreviews] = useState<string[]>([]);
   const [classified, setClassified] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [contextText, setContextText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function uploadPhoto(file: File): Promise<string | null> {
@@ -49,6 +50,7 @@ export function CameraCapture({ onClassified }: CameraCaptureProps) {
       if (!classified) {
         const formData = new FormData();
         formData.append("image", file);
+        if (contextText.trim()) formData.append("context", contextText.trim());
         const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
         const res = await fetch("/api/ai/classify", {
           method: "POST",
@@ -96,6 +98,17 @@ export function CameraCapture({ onClassified }: CameraCaptureProps) {
         className="hidden"
         id="camera-input"
       />
+
+      {/* Context input — helps AI understand the real situation */}
+      {!classified && (
+        <textarea
+          value={contextText}
+          onChange={(e) => setContextText(e.target.value)}
+          placeholder="Optional context (e.g., 'Roof was fixed, just need to paint the ceiling stain')"
+          rows={2}
+          className="w-full px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow resize-none"
+        />
+      )}
 
       {previews.length > 0 ? (
         <div className="flex flex-col gap-2">

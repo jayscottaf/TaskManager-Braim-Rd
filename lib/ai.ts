@@ -201,12 +201,22 @@ Return ONLY the JSON object, no other text.`,
 
 export async function classifyPhoto(
   imageBase64: string,
-  mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif"
+  mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+  userContext?: string
 ): Promise<PhotoClassification> {
+  const contextBlock = userContext && userContext.trim().length > 0
+    ? `USER CONTEXT (take this seriously — it describes the real situation the photo alone can't show):
+"${userContext.trim()}"
+
+Analyze the photo in light of this context. If the user says a prior issue is already fixed, focus on what remains. Let the context override what the photo might imply in isolation.
+
+`
+    : "";
+
   const text = await chatWithImage(
     `You are analyzing a photo of a home maintenance issue at a residential property in Saratoga Springs, NY.
 
-Classify this issue and return a JSON object with:
+${contextBlock}Classify this issue and return a JSON object with:
 - "task": suggested task name (concise, e.g., "Fix leaky kitchen faucet")
 - "type": array from [Plumbing, Electrical, Painting, Carpentry, Cleaning, Landscaping, HVAC, General Repair]
 - "area": one of [Kitchen, Bathroom, Bedroom, Living Room, Garage, Exterior, Garden, Roof, Laundry, Basement/Attic, Driveway/Walkway, Fence]
@@ -229,6 +239,96 @@ Return ONLY the JSON object, no other text.`,
     priority: "Medium",
     costEstimate: 0,
     description: "Could not classify the image.",
+  };
+}
+
+// --- Task Analysis ---
+
+export interface TaskAnalysis {
+  diyGuidance: {
+    recommendation: "DIY" | "Hire a pro" | "Either works";
+    reasoning: string;
+    steps: string[];
+    materials: string[];
+  };
+  costSanityCheck: {
+    estimateIsReasonable: boolean;
+    expectedRange: { low: number; high: number };
+    note: string;
+  };
+  contractorAdvice: {
+    tradeType: string;
+    questionsToAsk: string[];
+    redFlags: string[];
+  };
+}
+
+export async function analyzeTask(task: Task): Promise<TaskAnalysis> {
+  const costLine = task.costEstimate != null
+    ? `Homeowner's current cost estimate: $${task.costEstimate}`
+    : "Homeowner hasn't estimated a cost yet.";
+
+  const prompt = `You are an experienced home-maintenance advisor for a residential property in Saratoga Springs, NY (typical 3BR home, ~$350K market value). Use current 2024-2026 pricing for this area.
+
+Analyze this task and return a JSON object with three sections:
+
+TASK:
+- Name: "${task.task}"
+- Area: ${task.area || "unspecified"}
+- Type: ${task.type.join(", ") || "unspecified"}
+- Priority: ${task.priority || "unspecified"}
+- ${costLine}
+- Notes: ${task.notes ? task.notes.slice(0, 500) : "(none)"}
+
+Return a JSON object with:
+{
+  "diyGuidance": {
+    "recommendation": "DIY" | "Hire a pro" | "Either works",
+    "reasoning": "1-2 sentences on why",
+    "steps": ["3-6 concise steps if DIY-viable; empty array if not"],
+    "materials": ["materials and tools needed; empty array if not DIY"]
+  },
+  "costSanityCheck": {
+    "estimateIsReasonable": true | false,
+    "expectedRange": { "low": <number>, "high": <number> },
+    "note": "1 sentence explaining the range"
+  },
+  "contractorAdvice": {
+    "tradeType": "e.g., Licensed plumber, General handyman, HVAC technician",
+    "questionsToAsk": ["3-5 specific vetting questions"],
+    "redFlags": ["2-3 warning signs of a bad contractor for this job"]
+  }
+}
+
+If the user hasn't provided a cost estimate, set estimateIsReasonable to true and put your own range. Return ONLY the JSON object.`;
+
+  const text = await chat(prompt, 1500);
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]) as TaskAnalysis;
+    } catch {
+      // fall through to fallback
+    }
+  }
+
+  return {
+    diyGuidance: {
+      recommendation: "Either works",
+      reasoning: "Analysis unavailable — try regenerating.",
+      steps: [],
+      materials: [],
+    },
+    costSanityCheck: {
+      estimateIsReasonable: true,
+      expectedRange: { low: 0, high: 0 },
+      note: "Unable to estimate.",
+    },
+    contractorAdvice: {
+      tradeType: "General contractor",
+      questionsToAsk: [],
+      redFlags: [],
+    },
   };
 }
 

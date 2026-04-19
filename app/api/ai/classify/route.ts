@@ -9,6 +9,7 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get("image") as File | null;
+    const context = formData.get("context") as string | null;
 
     if (!file) {
       return NextResponse.json({ error: "No image provided" }, { status: 400 });
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
       | "image/webp"
       | "image/gif";
 
-    const classification = await classifyPhoto(base64, mediaType);
+    const classification = await classifyPhoto(base64, mediaType, context ?? undefined);
     return NextResponse.json(classification);
   } catch (error) {
     console.error("AI classify error:", error);
