@@ -46,6 +46,7 @@ export interface Task {
   actualCost: number | null;
   notes: string | null;
   tags: string[];
+  workMode: "DIY" | "Contractor" | null;
   createdTime: string;
 }
 
@@ -62,6 +63,7 @@ export interface CreateTaskInput {
   costEstimate?: number;
   notes?: string;
   tags?: string[];
+  workMode?: "DIY" | "Contractor";
 }
 
 export interface UpdateTaskInput {
@@ -79,6 +81,7 @@ export interface UpdateTaskInput {
   actualCost?: number;
   notes?: string;
   tags?: string[];
+  workMode?: "DIY" | "Contractor";
 }
 
 // Constant arrays for form dropdowns

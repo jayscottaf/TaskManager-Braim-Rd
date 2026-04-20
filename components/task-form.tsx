@@ -52,6 +52,7 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
   const [name, setName] = useState(task?.task ?? "");
   const [status, setStatus] = useState<Status>(task?.status ?? "Not Started");
   const [priority, setPriority] = useState<Priority | "">(task?.priority ?? "");
+  const [taskWorkMode, setTaskWorkMode] = useState<"DIY" | "Contractor" | "">(task?.workMode ?? "");
   const [area, setArea] = useState<Area | "">(task?.area ?? "");
   const [subLocation, setSubLocation] = useState(task?.subLocation ?? "");
   const [types, setTypes] = useState<TaskType[]>(task?.type ?? []);
@@ -61,7 +62,10 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
   const [contractorVendor, setContractorVendor] = useState(task?.contractorVendor ?? "");
   const [costEstimate, setCostEstimate] = useState(task?.costEstimate?.toString() ?? "");
   const [actualCost, setActualCost] = useState(task?.actualCost?.toString() ?? "");
-  const [notes, setNotes] = useState(task?.notes ?? "");
+  const [notes, setNotes] = useState(() => {
+    const raw = task?.notes ?? "";
+    return raw.split("\n\nAI Analysis:\n")[0].trimEnd();
+  });
   const [tags, setTags] = useState<string[]>(task?.tags ?? []);
   const [tagInput, setTagInput] = useState("");
   const [taskPhotos, setTaskPhotos] = useState<string[]>(
@@ -97,9 +101,14 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
   }
 
   function buildNotesWithPhotos(): string {
-    const baseNotes = notes.split("\n\nPhotos:")[0].split("\nAfter photo:")[0].trim();
-    if (taskPhotos.length === 0) return baseNotes;
-    return `${baseNotes}\n\nPhotos:\n${taskPhotos.join("\n")}`.trim();
+    const baseNotes = notes.split("\n\nPhotos:")[0].split("\nAfter photo:")[0].split("\n\nAI Analysis:\n")[0].trim();
+    let result = baseNotes;
+    if (taskPhotos.length > 0) result += `\n\nPhotos:\n${taskPhotos.join("\n")}`;
+    // Preserve existing AI Analysis from original notes
+    const raw = task?.notes ?? "";
+    const aiIdx = raw.indexOf("\n\nAI Analysis:\n");
+    if (aiIdx !== -1) result += raw.slice(aiIdx);
+    return result.trim();
   }
 
   function toggleType(t: TaskType) {
@@ -136,6 +145,7 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
           ...(costEstimate ? { costEstimate: parseFloat(costEstimate) } : {}),
           ...(() => { const n = buildNotesWithPhotos(); return n ? { notes: n } : {}; })(),
           ...(tags.length > 0 ? { tags } : {}),
+          ...(taskWorkMode ? { workMode: taskWorkMode } : {}),
         };
         await fetch("/api/tasks", {
           method: "POST",
@@ -157,6 +167,7 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
           actualCost: actualCost ? parseFloat(actualCost) : undefined,
           notes: buildNotesWithPhotos() || undefined,
           tags,
+          workMode: taskWorkMode || undefined,
         };
         await fetch(`/api/tasks/${task!.id}`, {
           method: "PATCH",
@@ -325,6 +336,31 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
               }`}
             >
               {p}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Work Mode */}
+      <div>
+        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
+          Work Mode
+        </label>
+        <div className="flex gap-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl p-1">
+          {(["DIY", "Contractor"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setTaskWorkMode(taskWorkMode === m ? "" : m)}
+              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                taskWorkMode === m
+                  ? m === "DIY"
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 shadow-sm"
+                    : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 shadow-sm"
+                  : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+              }`}
+            >
+              {m}
             </button>
           ))}
         </div>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format, isPast, isWithinInterval, addDays, isToday, isTomorrow, isYesterday, differenceInDays } from "date-fns";
-import { ChevronRight, Calendar, DollarSign, MapPin, Repeat } from "lucide-react";
+import { ChevronRight, Calendar, DollarSign, MapPin, Repeat, Wrench, HardHat } from "lucide-react";
 import type { Task, Priority, Status } from "@/lib/types";
 import { PRIORITIES, STATUSES } from "@/lib/types";
 import { showToast } from "@/components/toast";
@@ -197,6 +197,16 @@ export function TaskCard({ task }: { task: Task }) {
                     {t}
                   </span>
                 ))}
+                {task.workMode && (
+                  <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-medium ${
+                    task.workMode === "DIY"
+                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
+                      : "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                  }`}>
+                    {task.workMode === "DIY" ? <Wrench className="w-3 h-3" /> : <HardHat className="w-3 h-3" />}
+                    {task.workMode}
+                  </span>
+                )}
               </div>
             )}
           </div>

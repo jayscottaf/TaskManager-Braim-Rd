@@ -1,15 +1,45 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles, Loader2, Wrench, DollarSign, Phone, AlertTriangle, RefreshCw } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Sparkles, Loader2, Wrench, HardHat, DollarSign, Phone, AlertTriangle, RefreshCw } from "lucide-react";
 import type { TaskAnalysis } from "@/lib/ai";
 import type { Task } from "@/lib/types";
 import { showToast } from "@/components/toast";
 
+function extractAnalysis(notes: string | null): TaskAnalysis | null {
+  if (!notes) return null;
+  const marker = notes.indexOf("\n\nAI Analysis:\n");
+  if (marker === -1) return null;
+  const json = notes.slice(marker + "\n\nAI Analysis:\n".length).trim();
+  try { return JSON.parse(json); } catch { return null; }
+}
+
+function buildNotesWithAnalysis(notes: string | null, analysis: TaskAnalysis): string {
+  const base = (notes || "").split("\n\nAI Analysis:\n")[0].trimEnd();
+  return `${base}\n\nAI Analysis:\n${JSON.stringify(analysis)}`;
+}
+
 export function TaskAIAnalysis({ task }: { task: Task }) {
-  const [open, setOpen] = useState(false);
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<TaskAnalysis | null>(null);
+  const [workMode, setWorkMode] = useState<"DIY" | "Contractor" | null>(task.workMode);
+  const [savingMode, setSavingMode] = useState(false);
+
+  useEffect(() => {
+    const stored = extractAnalysis(task.notes);
+    if (stored) setAnalysis(stored);
+  }, [task.notes]);
+
+  async function saveAnalysisToNotes(data: TaskAnalysis) {
+    const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+    await fetch(`/api/tasks/${task.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...(secret ? { "x-app-secret": secret } : {}) },
+      body: JSON.stringify({ notes: buildNotesWithAnalysis(task.notes, data) }),
+    });
+  }
 
   async function run(force = false) {
     setLoading(true);
@@ -17,16 +47,14 @@ export function TaskAIAnalysis({ task }: { task: Task }) {
       const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
       const res = await fetch("/api/ai/analyze-task", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(secret ? { "x-app-secret": secret } : {}),
-        },
+        headers: { "Content-Type": "application/json", ...(secret ? { "x-app-secret": secret } : {}) },
         body: JSON.stringify({ id: task.id, force }),
       });
       if (!res.ok) throw new Error("Analysis failed");
       const data: TaskAnalysis = await res.json();
       setAnalysis(data);
-      setOpen(true);
+      await saveAnalysisToNotes(data);
+      router.refresh();
     } catch {
       showToast("Failed to analyze task. Try again.", "error");
     } finally {
@@ -34,9 +62,35 @@ export function TaskAIAnalysis({ task }: { task: Task }) {
     }
   }
 
-  if (!open) {
+  async function saveWorkMode(mode: "DIY" | "Contractor") {
+    setSavingMode(true);
+    setWorkMode(mode);
+    try {
+      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+      await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...(secret ? { "x-app-secret": secret } : {}) },
+        body: JSON.stringify({ workMode: mode }),
+      });
+      router.refresh();
+    } catch {
+      showToast("Failed to save work mode.", "error");
+    } finally {
+      setSavingMode(false);
+    }
+  }
+
+  if (!analysis) {
     return (
-      <div className="mx-5">
+      <div className="mx-5 flex flex-col gap-2">
+        {workMode && (
+          <div className="flex items-center gap-2 px-1">
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold ${workMode === "DIY" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"}`}>
+              {workMode === "DIY" ? <Wrench className="w-3 h-3" /> : <HardHat className="w-3 h-3" />}
+              {workMode}
+            </span>
+          </div>
+        )}
         <button
           onClick={() => run(false)}
           disabled={loading}
@@ -48,8 +102,6 @@ export function TaskAIAnalysis({ task }: { task: Task }) {
       </div>
     );
   }
-
-  if (!analysis) return null;
 
   const diyColor = analysis.diyGuidance.recommendation === "DIY"
     ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
@@ -76,6 +128,37 @@ export function TaskAIAnalysis({ task }: { task: Task }) {
           {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           Regenerate
         </button>
+      </div>
+
+      {/* Work Mode Toggle */}
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-4">
+        <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium mb-2">Your approach</p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => saveWorkMode("DIY")}
+            disabled={savingMode}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all ${
+              workMode === "DIY"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+            }`}
+          >
+            <Wrench className="w-4 h-4" />
+            DIY
+          </button>
+          <button
+            onClick={() => saveWorkMode("Contractor")}
+            disabled={savingMode}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all ${
+              workMode === "Contractor"
+                ? "bg-amber-600 text-white shadow-sm"
+                : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+            }`}
+          >
+            <HardHat className="w-4 h-4" />
+            Contractor
+          </button>
+        </div>
       </div>
 
       {/* DIY Guidance */}

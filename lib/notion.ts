@@ -109,6 +109,7 @@ function pageToTask(page: PageObjectResponse): Task {
     actualCost: getNumber(page, "Actual Cost"),
     notes: getText(page, "Notes"),
     tags: getMultiSelect(page, "Tags"),
+    workMode: getSelect(page, "Work Mode") as "DIY" | "Contractor" | null,
     createdTime: page.created_time,
   };
 }
@@ -245,6 +246,9 @@ export async function createTask(input: CreateTaskInput): Promise<Task> {
       multi_select: input.tags.map((t) => ({ name: t })),
     };
   }
+  if (input.workMode) {
+    properties["Work Mode"] = { select: { name: input.workMode } };
+  }
 
   const page = (await notion.pages.create({
     parent: { database_id: databaseId },
@@ -318,6 +322,11 @@ export async function updateTask(
       multi_select: input.tags.map((t) => ({ name: t })),
     };
   }
+  if (input.workMode !== undefined) {
+    properties["Work Mode"] = input.workMode
+      ? { select: { name: input.workMode } }
+      : { select: null };
+  }
 
   const page = (await notion.pages.update({
     page_id: id,
@@ -344,6 +353,7 @@ export async function ensureNotesProperty(): Promise<void> {
     const missing: Record<string, any> = {};
     if (!db.properties?.["Notes"]) missing.Notes = { rich_text: {} };
     if (!db.properties?.["Tags"]) missing.Tags = { multi_select: { options: [] } };
+    if (!db.properties?.["Work Mode"]) missing["Work Mode"] = { select: { options: [{ name: "DIY" }, { name: "Contractor" }] } };
     if (Object.keys(missing).length > 0) {
       await notion.databases.update({
         database_id: databaseId,

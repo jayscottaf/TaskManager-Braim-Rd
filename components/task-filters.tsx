@@ -26,8 +26,9 @@ export function TaskFilters() {
   const activeRange = searchParams.get("range") ?? DEFAULT_RANGE;
   const activeSearch = searchParams.get("q") || "";
   const activeTag = searchParams.get("tag") || "";
+  const activeWorkMode = searchParams.get("workMode") || "";
 
-  const filterCount = [activeStatus, activePriority, activeArea, activeTag].filter(Boolean).length;
+  const filterCount = [activeStatus, activePriority, activeArea, activeTag, activeWorkMode].filter(Boolean).length;
 
   function setFilter(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -45,6 +46,7 @@ export function TaskFilters() {
     params.delete("priority");
     params.delete("area");
     params.delete("tag");
+    params.delete("workMode");
     params.delete("q");
     router.push(`/?${params.toString()}`);
     setOpen(false);
@@ -170,6 +172,16 @@ export function TaskFilters() {
               placeholder="Filter by tag..."
               className="w-full px-3 py-2 rounded-lg text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
             />
+          </div>
+
+          {/* Work Mode */}
+          <div className="mb-3">
+            <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium mb-1.5">Work Mode</p>
+            <div className="flex gap-1.5 flex-wrap">
+              <Chip label="All" active={!activeWorkMode} onClick={() => setFilter("workMode", "")} />
+              <Chip label="DIY" active={activeWorkMode === "DIY"} onClick={() => setFilter("workMode", activeWorkMode === "DIY" ? "" : "DIY")} />
+              <Chip label="Contractor" active={activeWorkMode === "Contractor"} onClick={() => setFilter("workMode", activeWorkMode === "Contractor" ? "" : "Contractor")} />
+            </div>
           </div>
 
           {/* Clear all */}
