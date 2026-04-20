@@ -74,6 +74,19 @@ export function TaskAIAnalysis({ task }: { task: Task }) {
       const data: TaskAnalysis = await res.json();
       setAnalysis(data);
       await saveAnalysisToNotes(data);
+
+      // Auto-update cost estimate if the AI says it's off
+      if (!data.costSanityCheck.estimateIsReasonable) {
+        const mid = Math.round((data.costSanityCheck.expectedRange.low + data.costSanityCheck.expectedRange.high) / 2);
+        await updateCostEstimate(mid);
+      }
+
+      // Pre-select work mode from AI recommendation if not already set
+      if (!task.workMode && data.diyGuidance.recommendation !== "Either works") {
+        const suggested = data.diyGuidance.recommendation === "DIY" ? "DIY" : "Contractor";
+        await saveWorkMode(suggested);
+      }
+
       router.refresh();
     } catch {
       showToast("Failed to analyze task. Try again.", "error");
@@ -224,19 +237,12 @@ export function TaskAIAnalysis({ task }: { task: Task }) {
           ${analysis.costSanityCheck.expectedRange.low.toLocaleString()} – ${analysis.costSanityCheck.expectedRange.high.toLocaleString()}
         </p>
         <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-2">{analysis.costSanityCheck.note}</p>
-        {!analysis.costSanityCheck.estimateIsReasonable && (() => {
-          const mid = Math.round((analysis.costSanityCheck.expectedRange.low + analysis.costSanityCheck.expectedRange.high) / 2);
-          return (
-            <button
-              onClick={() => updateCostEstimate(mid)}
-              disabled={updatingCost}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-50"
-            >
-              {updatingCost ? <Loader2 className="w-3 h-3 animate-spin" /> : <DollarSign className="w-3 h-3" />}
-              Update estimate to ${mid}
-            </button>
-          );
-        })()}
+        {!analysis.costSanityCheck.estimateIsReasonable && (
+          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
+            <DollarSign className="w-3 h-3" />
+            Estimate auto-updated to ${Math.round((analysis.costSanityCheck.expectedRange.low + analysis.costSanityCheck.expectedRange.high) / 2)}
+          </p>
+        )}
       </div>
 
       {/* Contractor Advice */}
