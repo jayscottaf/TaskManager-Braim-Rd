@@ -120,7 +120,7 @@ export default async function ContractorsPage() {
           <p className="text-sm text-neutral-400 mt-1">Add a contractor/vendor on a task to start building the directory.</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3 px-5">
+        <div className="flex flex-col lg:grid lg:grid-cols-2 gap-3 px-5">
           {contractors.map((c) => {
             const primarySpecialty = Array.from(c.specialties)[0];
             return (

@@ -174,7 +174,7 @@ export default async function DonePage() {
                   {month.totalCost > 0 && <span>{formatMoney(month.totalCost)}</span>}
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col lg:grid lg:grid-cols-2 gap-2">
                 {month.tasks
                   .sort((a, b) => (b.dateCompleted?.start ?? "").localeCompare(a.dateCompleted?.start ?? ""))
                   .map((t) => (

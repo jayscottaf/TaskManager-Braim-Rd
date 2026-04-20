@@ -137,7 +137,7 @@ export default async function SpendingPage() {
       ) : (
         <>
           {/* Top stats */}
-          <div className="mx-5 grid grid-cols-2 gap-3">
+          <div className="mx-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5">
               <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">YTD Spent</p>
               <p className="text-2xl font-bold text-neutral-950 dark:text-neutral-50">{formatMoney(ytdTotal)}</p>
@@ -174,9 +174,10 @@ export default async function SpendingPage() {
             </div>
           </div>
 
-          {/* By Area */}
+          {/* By Area + By Type — side by side on desktop */}
+          <div className="lg:grid lg:grid-cols-2 lg:gap-4 lg:mx-5 flex flex-col gap-6">
           {byArea.length > 0 && (
-            <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5">
+            <div className="mx-5 lg:mx-0 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5">
               <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium mb-3">By Area</p>
               <div className="flex flex-col gap-3">
                 {byArea.map((a) => (
@@ -192,9 +193,8 @@ export default async function SpendingPage() {
             </div>
           )}
 
-          {/* By Type */}
           {byType.length > 0 && (
-            <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5">
+            <div className="mx-5 lg:mx-0 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5">
               <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium mb-3">By Type</p>
               <div className="flex flex-col gap-3">
                 {byType.map((a) => (
@@ -209,6 +209,7 @@ export default async function SpendingPage() {
               </div>
             </div>
           )}
+          </div>
         </>
       )}
     </div>

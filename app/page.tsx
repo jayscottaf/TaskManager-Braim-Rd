@@ -191,7 +191,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const params = await searchParams;
 
   return (
-    <div className="flex flex-col gap-6 pt-6 pb-6 lg:max-w-6xl lg:mx-auto">
+    <div className="flex flex-col gap-6 pt-6 pb-6">
       {/* Header */}
       <div className="flex items-start justify-between px-5 relative">
         <div>

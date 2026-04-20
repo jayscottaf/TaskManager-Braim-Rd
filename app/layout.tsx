@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces } from "next/font/google";
 import { BottomNav } from "@/components/bottom-nav";
+import { DesktopSidebar } from "@/components/desktop-sidebar";
 import { ToastProvider } from "@/components/toast";
 import { ServiceWorkerRegister } from "@/components/sw-register";
 import "./globals.css";
@@ -55,11 +56,14 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full bg-[#fafafa] dark:bg-neutral-950 text-neutral-950 dark:text-neutral-50 transition-colors">
-        <div className="pt-[env(safe-area-inset-top)]">
+        <DesktopSidebar />
+        <div className="pt-[env(safe-area-inset-top)] lg:pl-56">
           <div className="h-0.5 bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400" />
-          <main className="pb-20 max-w-2xl mx-auto">{children}</main>
+          <main className="pb-20 lg:pb-6 max-w-2xl lg:max-w-6xl mx-auto">{children}</main>
         </div>
-        <BottomNav />
+        <div className="lg:hidden">
+          <BottomNav />
+        </div>
         <ToastProvider />
         <ServiceWorkerRegister />
       </body>
