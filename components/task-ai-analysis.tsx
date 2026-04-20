@@ -27,6 +27,26 @@ export function TaskAIAnalysis({ task }: { task: Task }) {
   const [workMode, setWorkMode] = useState<"DIY" | "Contractor" | null>(task.workMode);
   const [savingMode, setSavingMode] = useState(false);
 
+  const [updatingCost, setUpdatingCost] = useState(false);
+
+  async function updateCostEstimate(amount: number) {
+    setUpdatingCost(true);
+    try {
+      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+      await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...(secret ? { "x-app-secret": secret } : {}) },
+        body: JSON.stringify({ costEstimate: amount }),
+      });
+      showToast(`Cost estimate updated to $${amount}`, "success");
+      router.refresh();
+    } catch {
+      showToast("Failed to update cost estimate.", "error");
+    } finally {
+      setUpdatingCost(false);
+    }
+  }
+
   useEffect(() => {
     const stored = extractAnalysis(task.notes);
     if (stored) setAnalysis(stored);
@@ -203,7 +223,20 @@ export function TaskAIAnalysis({ task }: { task: Task }) {
         <p className="text-lg font-bold text-neutral-900 dark:text-neutral-50 mb-1">
           ${analysis.costSanityCheck.expectedRange.low.toLocaleString()} – ${analysis.costSanityCheck.expectedRange.high.toLocaleString()}
         </p>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400">{analysis.costSanityCheck.note}</p>
+        <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-2">{analysis.costSanityCheck.note}</p>
+        {!analysis.costSanityCheck.estimateIsReasonable && (() => {
+          const mid = Math.round((analysis.costSanityCheck.expectedRange.low + analysis.costSanityCheck.expectedRange.high) / 2);
+          return (
+            <button
+              onClick={() => updateCostEstimate(mid)}
+              disabled={updatingCost}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-50"
+            >
+              {updatingCost ? <Loader2 className="w-3 h-3 animate-spin" /> : <DollarSign className="w-3 h-3" />}
+              Update estimate to ${mid}
+            </button>
+          );
+        })()}
       </div>
 
       {/* Contractor Advice */}
