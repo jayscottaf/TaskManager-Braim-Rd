@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
-import { SlidersHorizontal, Search, X } from "lucide-react";
+import { SlidersHorizontal, Search, X, Clock, MapPin } from "lucide-react";
 import { STATUSES, PRIORITIES, AREAS } from "@/lib/types";
 
 const TIME_RANGES = [
@@ -86,6 +86,27 @@ export function TaskFilters() {
             <X className="w-4 h-4" />
           </button>
         )}
+      </div>
+
+      {/* View toggle — desktop only */}
+      <div className="hidden lg:flex gap-1 mb-2">
+        {([
+          { value: "", label: "By Time", icon: Clock },
+          { value: "area", label: "By Area", icon: MapPin },
+        ] as const).map(({ value, label, icon: Icon }) => (
+          <button
+            key={value}
+            onClick={() => setFilter("view", value)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              (searchParams.get("view") || "") === value
+                ? "bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 shadow-sm"
+                : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Time range + filter button */}

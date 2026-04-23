@@ -238,10 +238,21 @@ export function TaskAIAnalysis({ task }: { task: Task }) {
         </p>
         <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-2">{analysis.costSanityCheck.note}</p>
         {!analysis.costSanityCheck.estimateIsReasonable && (
-          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
+          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1 mb-2">
             <DollarSign className="w-3 h-3" />
             Estimate auto-updated to ${Math.round((analysis.costSanityCheck.expectedRange.low + analysis.costSanityCheck.expectedRange.high) / 2)}
           </p>
+        )}
+        {analysis.costSanityCheck.neglectCost && (
+          <div className="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+            <p className="text-xs font-semibold text-red-600 dark:text-red-400 flex items-center gap-1 mb-0.5">
+              <AlertTriangle className="w-3 h-3" />
+              Cost of neglect: ${analysis.costSanityCheck.neglectCost.low.toLocaleString()} – ${analysis.costSanityCheck.neglectCost.high.toLocaleString()}
+            </p>
+            {analysis.costSanityCheck.neglectNote && (
+              <p className="text-xs text-red-500/80 dark:text-red-400/70">{analysis.costSanityCheck.neglectNote}</p>
+            )}
+          </div>
         )}
       </div>
 

@@ -49,10 +49,10 @@ export function DesktopSidebar() {
           <Link
             key={href}
             href={href}
-            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
               isActive(href)
-                ? "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300"
-                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                ? "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-l-2 border-blue-600 -ml-px"
+                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-50"
             }`}
           >
             <Icon className="w-4 h-4" />
@@ -62,7 +62,7 @@ export function DesktopSidebar() {
 
         <button
           onClick={() => window.dispatchEvent(new CustomEvent("open-ai"))}
-          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-50 transition-all"
         >
           <Sparkles className="w-4 h-4" />
           AI Suggestions
@@ -75,10 +75,10 @@ export function DesktopSidebar() {
           <Link
             key={href}
             href={href}
-            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
               isActive(href)
-                ? "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300"
-                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                ? "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-l-2 border-blue-600 -ml-px"
+                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-50"
             }`}
           >
             <Icon className="w-4 h-4" />

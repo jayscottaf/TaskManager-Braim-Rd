@@ -255,6 +255,8 @@ export interface TaskAnalysis {
     estimateIsReasonable: boolean;
     expectedRange: { low: number; high: number };
     note: string;
+    neglectCost: { low: number; high: number } | null;
+    neglectNote: string;
   };
   contractorAdvice: {
     tradeType: string;
@@ -291,7 +293,9 @@ Return a JSON object with:
   "costSanityCheck": {
     "estimateIsReasonable": true | false,
     "expectedRange": { "low": <number>, "high": <number> },
-    "note": "1 sentence explaining the range"
+    "note": "1 sentence explaining the range",
+    "neglectCost": { "low": <number>, "high": <number> } | null,
+    "neglectNote": "what could happen if ignored for a year — damage, increased repair cost, replacement risk. If purely cosmetic with no escalation risk, set neglectCost to null and neglectNote to empty string"
   },
   "contractorAdvice": {
     "tradeType": "e.g., Licensed plumber, General handyman, HVAC technician",
@@ -323,6 +327,8 @@ If the user hasn't provided a cost estimate, set estimateIsReasonable to true an
       estimateIsReasonable: true,
       expectedRange: { low: 0, high: 0 },
       note: "Unable to estimate.",
+      neglectCost: null,
+      neglectNote: "",
     },
     contractorAdvice: {
       tradeType: "General contractor",
@@ -330,6 +336,70 @@ If the user hasn't provided a cost estimate, set estimateIsReasonable to true an
       redFlags: [],
     },
   };
+}
+
+// --- Start My Day ---
+
+export interface DailyFocus {
+  greeting: string;
+  tasks: Array<{
+    id: string;
+    task: string;
+    reason: string;
+    estimatedMinutes: number;
+  }>;
+}
+
+export async function startMyDay(tasks: Task[]): Promise<DailyFocus> {
+  const activeTasks = tasks.filter((t) => t.status !== "Completed");
+  if (activeTasks.length === 0) {
+    return { greeting: "All clear! Nothing on your plate today.", tasks: [] };
+  }
+
+  const seasonalContext = buildSeasonalContext();
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+
+  const taskList = activeTasks
+    .map(
+      (t) =>
+        `- ID: ${t.id} | "${t.task}" | Priority: ${t.priority || "none"} | Area: ${t.area || "none"} | Due: ${t.dueDate?.start || "none"} | Status: ${t.status} | Cost: $${t.costEstimate || "?"} | WorkMode: ${t.workMode || "undecided"} | Tags: ${t.tags.join(", ") || "none"}`
+    )
+    .join("\n");
+
+  const text = await chat(`You are a smart home assistant for a homeowner in Saratoga Springs, NY. Today is ${today}.
+
+${seasonalContext}
+
+Pick 3-5 tasks for today from this list. Favor overdue items, weather-sensitive tasks, quick wins, and anything that prevents damage if delayed. Don't pick more than 5.
+
+ACTIVE TASKS:
+${taskList}
+
+Return a JSON object:
+{
+  "greeting": "A friendly 1-sentence greeting that references the day, weather, or season. Be conversational, not robotic.",
+  "tasks": [
+    {
+      "id": "the task ID from the list",
+      "task": "the task name",
+      "reason": "why this should be done today — 5-8 words max",
+      "estimatedMinutes": <realistic number>
+    }
+  ]
+}
+
+Return ONLY the JSON object.`, 1024);
+
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      return JSON.parse(match[0]) as DailyFocus;
+    } catch {
+      // fall through
+    }
+  }
+
+  return { greeting: "Let's get things done today.", tasks: [] };
 }
 
 // --- Wish List Project Planner ---

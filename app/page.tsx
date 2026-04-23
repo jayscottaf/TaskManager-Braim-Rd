@@ -10,11 +10,13 @@ import { TaskFilters } from "@/components/task-filters";
 import { SeasonalBanner } from "@/components/seasonal-banner";
 import { OverdueBanner } from "@/components/overdue-banner";
 import { AIPanel } from "@/components/ai-panel";
+import { StartMyDay } from "@/components/start-my-day";
 import { DashboardAside } from "@/components/dashboard-aside";
+import { AreaProgressGroup } from "@/components/area-progress-group";
 import type { Task, Status, Priority, Area } from "@/lib/types";
 
 interface PageProps {
-  searchParams: Promise<{ status?: string; priority?: string; area?: string; range?: string; q?: string; tag?: string; workMode?: string }>;
+  searchParams: Promise<{ status?: string; priority?: string; area?: string; range?: string; q?: string; tag?: string; workMode?: string; view?: string }>;
 }
 
 async function DashboardContent({
@@ -25,6 +27,7 @@ async function DashboardContent({
   search,
   tag,
   workMode,
+  view,
 }: {
   status?: Status;
   priority?: Priority;
@@ -33,6 +36,7 @@ async function DashboardContent({
   search?: string;
   tag?: string;
   workMode?: string;
+  view?: string;
 }) {
   let tasks;
   try {
@@ -141,25 +145,47 @@ async function DashboardContent({
     else later.push(t);
   }
 
+  // Group by area for area view
+  const areaGroups = new Map<string, Task[]>();
+  for (const t of tasks) {
+    const key = t.area || "Uncategorized";
+    const group = areaGroups.get(key) ?? [];
+    group.push(t);
+    areaGroups.set(key, group);
+  }
+  const sortedAreas = Array.from(areaGroups.entries()).sort((a, b) => {
+    const aComplete = a[1].filter((t) => t.status === "Completed").length / a[1].length;
+    const bComplete = b[1].filter((t) => t.status === "Completed").length / b[1].length;
+    return aComplete - bComplete;
+  });
+
   return (
     <div className="lg:max-w-6xl lg:mx-auto w-full">
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8">
         <div className="flex flex-col gap-6">
           <OverdueBanner tasks={tasks} />
-          <div className="flex flex-col gap-6 px-5 lg:px-0 animate-fade-in">
-            <TaskSection title="Overdue" count={overdue.length} accent="overdue">
-              {overdue.map((t) => <TaskCard key={t.id} task={t} />)}
-            </TaskSection>
-            <TaskSection title="Today" count={todayTasks.length}>
-              {todayTasks.map((t) => <TaskCard key={t.id} task={t} />)}
-            </TaskSection>
-            <TaskSection title="This Week" count={thisWeek.length}>
-              {thisWeek.map((t) => <TaskCard key={t.id} task={t} />)}
-            </TaskSection>
-            <TaskSection title="Later" count={later.length}>
-              {later.map((t) => <TaskCard key={t.id} task={t} />)}
-            </TaskSection>
-          </div>
+          {view === "area" ? (
+            <div className="flex flex-col gap-4 px-5 lg:px-0 animate-fade-in">
+              {sortedAreas.map(([areaName, areaTasks]) => (
+                <AreaProgressGroup key={areaName} area={areaName} tasks={areaTasks} />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-6 px-5 lg:px-0 animate-fade-in">
+              <TaskSection title="Overdue" count={overdue.length} accent="overdue">
+                {overdue.map((t) => <TaskCard key={t.id} task={t} />)}
+              </TaskSection>
+              <TaskSection title="Today" count={todayTasks.length}>
+                {todayTasks.map((t) => <TaskCard key={t.id} task={t} />)}
+              </TaskSection>
+              <TaskSection title="This Week" count={thisWeek.length}>
+                {thisWeek.map((t) => <TaskCard key={t.id} task={t} />)}
+              </TaskSection>
+              <TaskSection title="Later" count={later.length}>
+                {later.map((t) => <TaskCard key={t.id} task={t} />)}
+              </TaskSection>
+            </div>
+          )}
           <AIPanel />
         </div>
         <aside className="hidden lg:block mt-6">
@@ -207,6 +233,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         <PageMenu />
       </div>
 
+      {/* Start My Day */}
+      <StartMyDay />
+
       {/* Seasonal Banner */}
       <SeasonalBanner />
 
@@ -225,6 +254,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           search={params.q}
           tag={params.tag}
           workMode={params.workMode}
+          view={params.view}
         />
       </Suspense>
     </div>
