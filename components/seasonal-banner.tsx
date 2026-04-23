@@ -54,22 +54,22 @@ function SeasonCard({
 
   const colors = variant === "active"
     ? {
-        bg: "bg-blue-600 dark:bg-blue-700",
-        text: "text-white",
-        sub: "text-blue-100",
-        badge: "bg-blue-500/30 text-blue-100",
-        taskBg: "bg-blue-500/20 hover:bg-blue-500/30",
-        addBtn: "bg-white/20 hover:bg-white/30 text-white",
-        doneBtn: "bg-emerald-500/30 text-emerald-100",
+        bg: "bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800",
+        text: "text-neutral-900 dark:text-neutral-50",
+        sub: "text-neutral-500 dark:text-neutral-400",
+        badge: "bg-blue-100 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300",
+        taskBg: "bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800",
+        addBtn: "bg-blue-600 hover:bg-blue-700 text-white",
+        doneBtn: "bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400",
       }
     : {
-        bg: "bg-violet-600 dark:bg-violet-700",
-        text: "text-white",
-        sub: "text-violet-100",
-        badge: "bg-violet-500/30 text-violet-100",
-        taskBg: "bg-violet-500/20 hover:bg-violet-500/30",
-        addBtn: "bg-white/20 hover:bg-white/30 text-white",
-        doneBtn: "bg-emerald-500/30 text-emerald-100",
+        bg: "bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800",
+        text: "text-neutral-900 dark:text-neutral-50",
+        sub: "text-neutral-500 dark:text-neutral-400",
+        badge: "bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400",
+        taskBg: "bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800",
+        addBtn: "bg-blue-600 hover:bg-blue-700 text-white",
+        doneBtn: "bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400",
       };
 
   // Check which suggestions already exist as tasks
@@ -86,7 +86,7 @@ function SeasonCard({
   const totalCount = season.taskSuggestions.length;
 
   return (
-    <div className={`rounded-2xl ${colors.bg} overflow-hidden transition-all`}>
+    <div className={`rounded-2xl shadow-sm ${colors.bg} overflow-hidden transition-all`}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left"
