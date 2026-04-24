@@ -12,6 +12,7 @@ export function StartMyDay() {
   const [loading, setLoading] = useState(true);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [acting, setActing] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -82,6 +83,7 @@ export function StartMyDay() {
   }
 
   if (!focus || focus.tasks.length === 0) return null;
+  if (dismissed) return null;
 
   const visibleTasks = focus.tasks.filter((t) => !hidden.has(t.id));
   if (visibleTasks.length === 0) return null;
@@ -103,9 +105,18 @@ export function StartMyDay() {
           </h2>
           <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-0.5">{focus.greeting}</p>
         </div>
-        <span className="text-neutral-400 text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
-          ~{fmtTime(totalMinutes)}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-neutral-400 text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
+            ~{fmtTime(totalMinutes)}
+          </span>
+          <button
+            onClick={() => setDismissed(true)}
+            className="text-neutral-300 dark:text-neutral-600 hover:text-neutral-500 dark:hover:text-neutral-400 transition-colors"
+            title="Dismiss for now"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">

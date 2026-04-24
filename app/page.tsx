@@ -224,25 +224,24 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
   return (
     <div className="flex flex-col gap-6 pt-6 pb-6">
-      {/* Header */}
-      <div className="flex items-start justify-between px-5 relative">
+      {/* Header — hidden on desktop (sidebar has it) */}
+      <div className="flex items-start justify-between px-5 relative lg:hidden">
         <div>
-          <h1 className="text-3xl font-bold font-display tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">Braim Rd</h1>
-          <p className="text-sm text-neutral-400 mt-0.5">Home Maintenance Tracker</p>
+          <h1 className="text-2xl font-bold font-display tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">Braim Rd</h1>
         </div>
         <PageMenu />
       </div>
 
-      {/* Start My Day */}
-      <StartMyDay />
-
-      {/* Seasonal Banner */}
-      <SeasonalBanner />
-
-      {/* Filters */}
+      {/* Filters + search (sticky) */}
       <Suspense fallback={null}>
         <TaskFilters />
       </Suspense>
+
+      {/* Start My Day */}
+      <StartMyDay />
+
+      {/* Seasonal Banner (collapsed by default) */}
+      <SeasonalBanner />
 
       {/* Content: task list + desktop aside */}
       <Suspense fallback={<DashboardSkeleton />}>

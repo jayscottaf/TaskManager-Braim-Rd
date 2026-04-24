@@ -65,7 +65,7 @@ export function TaskFilters() {
   }, [open]);
 
   return (
-    <div className="px-5 relative" ref={panelRef}>
+    <div className="px-5 relative sticky top-0 z-30 bg-[#fafafa] dark:bg-neutral-950 pb-2 pt-2 -mt-2" ref={panelRef}>
       {/* Search bar */}
       <div className="relative mb-2">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />

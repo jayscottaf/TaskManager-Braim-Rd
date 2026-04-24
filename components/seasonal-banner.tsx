@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getActiveSeasons, getUpcomingSeasons } from "@/lib/seasonal";
-import { Sun, Snowflake, Leaf, Flower, ChevronDown, ChevronUp, Plus, Check } from "lucide-react";
+import { Sun, Snowflake, Leaf, Flower, ChevronDown, ChevronUp, Plus, Check, Calendar } from "lucide-react";
 import type { SeasonalRule } from "@/lib/seasonal";
 
 function getSeasonIcon(name: string) {
@@ -147,6 +147,7 @@ export function SeasonalBanner() {
   const active = getActiveSeasons();
   const upcoming = getUpcomingSeasons(new Date(), 21);
   const [existingTasks, setExistingTasks] = useState<string[]>([]);
+  const [showAll, setShowAll] = useState(false);
 
   // Fetch existing task names for duplicate detection
   useEffect(() => {
@@ -161,10 +162,35 @@ export function SeasonalBanner() {
       .catch(() => {});
   }, []);
 
-  if (active.length === 0 && upcoming.length === 0) return null;
+  const all = [...active, ...upcoming];
+  if (all.length === 0) return null;
+
+  if (!showAll) {
+    return (
+      <div className="px-5">
+        <button
+          onClick={() => setShowAll(true)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-sm text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+        >
+          <span className="flex items-center gap-2 text-neutral-700 dark:text-neutral-200">
+            <Calendar className="w-4 h-4 text-neutral-400" />
+            {active.length} active season{active.length !== 1 ? "s" : ""}
+            {upcoming.length > 0 ? `, ${upcoming.length} upcoming` : ""}
+          </span>
+          <ChevronDown className="w-4 h-4 text-neutral-400" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2 px-5">
+      <button
+        onClick={() => setShowAll(false)}
+        className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 self-end px-1"
+      >
+        Collapse <ChevronUp className="w-3 h-3" />
+      </button>
       {active.map((season) => (
         <SeasonCard key={season.name} season={season} variant="active" existingTasks={existingTasks} />
       ))}
