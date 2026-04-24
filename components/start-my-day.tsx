@@ -88,6 +88,11 @@ export function StartMyDay() {
 
   const totalMinutes = visibleTasks.reduce((sum, t) => sum + t.estimatedMinutes, 0);
 
+  function fmtTime(mins: number): string {
+    if (mins >= 60) return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, "0")}`;
+    return `${mins} min`;
+  }
+
   return (
     <div className="mx-5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm animate-fade-in">
       <div className="flex items-start justify-between mb-3">
@@ -99,7 +104,7 @@ export function StartMyDay() {
           <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-0.5">{focus.greeting}</p>
         </div>
         <span className="text-neutral-400 text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
-          ~{totalMinutes} min
+          ~{fmtTime(totalMinutes)}
         </span>
       </div>
 
@@ -111,7 +116,7 @@ export function StartMyDay() {
           >
             <div className="flex-1 min-w-0">
               <p className="text-neutral-900 dark:text-neutral-50 text-sm font-medium truncate">{t.task}</p>
-              <p className="text-neutral-500 dark:text-neutral-400 text-[11px]">{t.reason} · ~{t.estimatedMinutes} min</p>
+              <p className="text-neutral-500 dark:text-neutral-400 text-[11px]">{t.reason} · ~{fmtTime(t.estimatedMinutes)}</p>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <button
