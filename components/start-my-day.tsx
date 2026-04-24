@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Check, Clock, X, Loader2 } from "lucide-react";
+import { Sparkles, Check, Clock, EyeOff, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import type { DailyFocus } from "@/lib/ai";
 import { showToast } from "@/components/toast";
 
@@ -12,7 +12,7 @@ export function StartMyDay() {
   const [loading, setLoading] = useState(true);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [acting, setActing] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -83,7 +83,6 @@ export function StartMyDay() {
   }
 
   if (!focus || focus.tasks.length === 0) return null;
-  if (dismissed) return null;
 
   const visibleTasks = focus.tasks.filter((t) => !hidden.has(t.id));
   if (visibleTasks.length === 0) return null;
@@ -93,6 +92,23 @@ export function StartMyDay() {
   function fmtTime(mins: number): string {
     if (mins >= 60) return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, "0")}`;
     return `${mins} min`;
+  }
+
+  if (collapsed) {
+    return (
+      <div className="mx-5">
+        <button
+          onClick={() => setCollapsed(false)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-sm text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+        >
+          <span className="flex items-center gap-2 text-neutral-700 dark:text-neutral-200">
+            <Sparkles className="w-4 h-4 text-blue-500" />
+            Start My Day · {visibleTasks.length} task{visibleTasks.length !== 1 ? "s" : ""} · ~{fmtTime(totalMinutes)}
+          </span>
+          <ChevronDown className="w-4 h-4 text-neutral-400" />
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -110,11 +126,11 @@ export function StartMyDay() {
             ~{fmtTime(totalMinutes)}
           </span>
           <button
-            onClick={() => setDismissed(true)}
+            onClick={() => setCollapsed(true)}
             className="text-neutral-300 dark:text-neutral-600 hover:text-neutral-500 dark:hover:text-neutral-400 transition-colors"
-            title="Dismiss for now"
+            title="Collapse"
           >
-            <X className="w-4 h-4" />
+            <ChevronUp className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -149,9 +165,9 @@ export function StartMyDay() {
               <button
                 onClick={() => setHidden((prev) => new Set(prev).add(t.id))}
                 className="p-1.5 rounded-lg bg-neutral-200 dark:bg-neutral-700 text-neutral-400 hover:bg-neutral-300 dark:hover:bg-neutral-600 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
-                title="Skip"
+                title="Not today"
               >
-                <X className="w-3.5 h-3.5" />
+                <EyeOff className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
