@@ -6,6 +6,13 @@ import { Sparkles, Check, Clock, EyeOff, ChevronDown, ChevronUp, Loader2 } from 
 import type { DailyFocus } from "@/lib/ai";
 import { showToast } from "@/components/toast";
 
+const TIME_PRESETS = [
+  { label: "15 min", value: 15 },
+  { label: "30 min", value: 30 },
+  { label: "1 hr", value: 60 },
+  { label: "2 hr", value: 120 },
+] as const;
+
 export function StartMyDay() {
   const router = useRouter();
   const [focus, setFocus] = useState<DailyFocus | null>(null);
@@ -13,12 +20,16 @@ export function StartMyDay() {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [acting, setActing] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [budgetMinutes, setBudgetMinutes] = useState(30);
+  const [customMinutes, setCustomMinutes] = useState("");
 
   useEffect(() => {
     async function load() {
       try {
+        setLoading(true);
+        setHidden(new Set());
         const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-        const res = await fetch("/api/ai/start-my-day", {
+        const res = await fetch(`/api/ai/start-my-day?minutes=${budgetMinutes}`, {
           headers: secret ? { "x-app-secret": secret } : {},
         });
         if (res.ok) setFocus(await res.json());
@@ -29,7 +40,7 @@ export function StartMyDay() {
       }
     }
     load();
-  }, []);
+  }, [budgetMinutes]);
 
   async function markDone(taskId: string) {
     setActing(taskId);
@@ -82,17 +93,65 @@ export function StartMyDay() {
     );
   }
 
-  if (!focus || focus.tasks.length === 0) return null;
+  if (!focus) return null;
 
   const visibleTasks = focus.tasks.filter((t) => !hidden.has(t.id));
-  if (visibleTasks.length === 0) return null;
-
   const totalMinutes = visibleTasks.reduce((sum, t) => sum + t.estimatedMinutes, 0);
+  const remainingMinutes = Math.max(0, budgetMinutes - totalMinutes);
 
   function fmtTime(mins: number): string {
     if (mins >= 60) return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, "0")}`;
     return `${mins} min`;
   }
+
+  function setBudget(value: number) {
+    setBudgetMinutes(value);
+    setCustomMinutes("");
+  }
+
+  function applyCustomMinutes(value: string) {
+    setCustomMinutes(value);
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 10 && parsed <= 480) {
+      setBudgetMinutes(Math.round(parsed));
+    }
+  }
+
+  const budgetControls = (
+    <div className="flex flex-col gap-2 mb-3">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+        {TIME_PRESETS.map((preset) => (
+          <button
+            key={preset.value}
+            onClick={() => setBudget(preset.value)}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors flex-shrink-0 ${
+              budgetMinutes === preset.value && !customMinutes
+                ? "bg-blue-600 text-white"
+                : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+            }`}
+          >
+            {preset.label}
+          </button>
+        ))}
+        <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-xs text-neutral-500 dark:text-neutral-400 flex-shrink-0">
+          Custom
+          <input
+            type="number"
+            min="10"
+            max="480"
+            value={customMinutes}
+            onChange={(e) => applyCustomMinutes(e.target.value)}
+            placeholder="min"
+            className="w-12 bg-transparent text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none"
+          />
+        </label>
+      </div>
+      <div className="flex items-center justify-between text-[11px] text-neutral-400">
+        <span>{fmtTime(budgetMinutes)} available</span>
+        <span>{fmtTime(totalMinutes)} planned - {fmtTime(remainingMinutes)} open</span>
+      </div>
+    </div>
+  );
 
   if (collapsed) {
     return (
@@ -103,7 +162,7 @@ export function StartMyDay() {
         >
           <span className="flex items-center gap-2 text-neutral-700 dark:text-neutral-200">
             <Sparkles className="w-4 h-4 text-blue-500" />
-            Start My Day · {visibleTasks.length} task{visibleTasks.length !== 1 ? "s" : ""} · ~{fmtTime(totalMinutes)}
+            Start My Day - {fmtTime(totalMinutes)} planned in {fmtTime(budgetMinutes)}
           </span>
           <ChevronDown className="w-4 h-4 text-neutral-400" />
         </button>
@@ -122,8 +181,8 @@ export function StartMyDay() {
           <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-0.5">{focus.greeting}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-neutral-400 text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
-            ~{fmtTime(totalMinutes)}
+          <span className="text-neutral-400 text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full whitespace-nowrap">
+            {fmtTime(totalMinutes)} / {fmtTime(budgetMinutes)}
           </span>
           <button
             onClick={() => setCollapsed(true)}
@@ -135,6 +194,15 @@ export function StartMyDay() {
         </div>
       </div>
 
+      {budgetControls}
+
+      {visibleTasks.length === 0 && (
+        <div className="rounded-xl bg-neutral-50 dark:bg-neutral-800/50 px-3 py-4 text-center">
+          <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">No good fit for {fmtTime(budgetMinutes)}</p>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">Try 30 minutes or snooze a task.</p>
+        </div>
+      )}
+
       <div className="flex flex-col gap-2">
         {visibleTasks.map((t) => (
           <div
@@ -142,8 +210,13 @@ export function StartMyDay() {
             className="flex items-center gap-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl px-3 py-2.5"
           >
             <div className="flex-1 min-w-0">
-              <p className="text-neutral-900 dark:text-neutral-50 text-sm font-medium truncate">{t.task}</p>
-              <p className="text-neutral-500 dark:text-neutral-400 text-[11px]">{t.reason} · ~{fmtTime(t.estimatedMinutes)}</p>
+              <div className="flex items-center gap-2 min-w-0">
+                <p className="text-neutral-900 dark:text-neutral-50 text-sm font-medium truncate">{t.task}</p>
+                <span className="px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-300 text-[10px] font-semibold flex-shrink-0">
+                  {t.impactLabel}
+                </span>
+              </div>
+              <p className="text-neutral-500 dark:text-neutral-400 text-[11px]">{t.reason} - ~{fmtTime(t.estimatedMinutes)}</p>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <button

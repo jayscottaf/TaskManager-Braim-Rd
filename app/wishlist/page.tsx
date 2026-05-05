@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Plus, X, Loader2, ArrowLeft, Pencil, Copy, ChevronRight, Archive,
   ArchiveRestore, Trash2, Eye, EyeOff, ArrowUpDown, Rocket, CalendarPlus,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -38,6 +39,7 @@ export default function WishListPage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const [estimatingCost, setEstimatingCost] = useState(false);
   const [confirmDeleteWish, setConfirmDeleteWish] = useState(false);
   const [promoteDate, setPromoteDate] = useState("");
   const [promoteEndDate, setPromoteEndDate] = useState("");
@@ -296,6 +298,67 @@ export default function WishListPage() {
       setError((e as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleAiCostEstimate(item: WishListItem) {
+    setEstimatingCost(true);
+    setError(null);
+    try {
+      const description = [
+        `Project: ${item.project}`,
+        item.description ? `Description: ${item.description}` : "",
+        item.aiPlan ? `Existing plan: ${item.aiPlan}` : "",
+        item.category ? `Category: ${item.category}` : "",
+        item.priority ? `Priority: ${item.priority}` : "",
+        item.timeline ? `Timeline: ${item.timeline}` : "",
+        item.bestSeason ? `Best season: ${item.bestSeason}` : "",
+        item.diyCost != null ? `Current DIY cost: $${item.diyCost}` : "",
+        item.hiredCost != null ? `Current hired out cost: $${item.hiredCost}` : "",
+        item.valueAdd != null ? `Current value add: $${item.valueAdd}` : "",
+        "Re-estimate the DIY cost, hired out contractor cost, value add, ROI, and DIY difficulty for Saratoga Springs, NY pricing.",
+      ].filter(Boolean).join("\n");
+
+      const form = new FormData();
+      form.append("description", description);
+
+      const planRes = await fetch("/api/ai/plan-project", {
+        method: "POST",
+        headers: secret ? { "x-app-secret": secret } : {},
+        body: form,
+      });
+      if (!planRes.ok) throw new Error((await planRes.json()).error || "AI estimate failed");
+
+      const plan: WishListPlan = await planRes.json();
+      const body = {
+        diyCost: plan.diyCost,
+        hiredCost: plan.hiredCost,
+        valueAdd: plan.valueAdd,
+        diyRoi: plan.diyRoi,
+        hiredRoi: plan.hiredRoi,
+        diyRoiRating: plan.diyRoiRating,
+        hiredRoiRating: plan.hiredRoiRating,
+        diyDifficulty: plan.diyDifficulty,
+        category: item.category || plan.category,
+        priority: item.priority || plan.priority,
+        timeline: item.timeline || plan.timeline,
+        bestSeason: item.bestSeason || plan.bestSeason,
+      };
+
+      const updateRes = await fetch(`/api/wishlist/${item.id}`, {
+        method: "PATCH",
+        headers: headers(),
+        body: JSON.stringify(body),
+      });
+      if (!updateRes.ok) throw new Error((await updateRes.json()).error || "Failed to save AI estimate");
+
+      const updated = { ...item, ...body };
+      setSelectedItem(updated);
+      setItems((prev) => prev.map((i) => i.id === item.id ? updated : i));
+    } catch (e: unknown) {
+      setError((e as Error).message || "Failed to estimate cost");
+    } finally {
+      setEstimatingCost(false);
     }
   }
 
@@ -612,7 +675,14 @@ export default function WishListPage() {
                 {selectedItem.diyCost != null ? (
                   <RoiBadge rating={selectedItem.diyRoiRating} roi={selectedItem.diyRoi} size="sm" />
                 ) : (
-                  <p className="text-[10px] text-neutral-400">Edit to add cost</p>
+                  <button
+                    onClick={() => handleAiCostEstimate(selectedItem)}
+                    disabled={estimatingCost}
+                    className="mx-auto mt-1 flex items-center gap-1 text-[10px] font-medium text-blue-600 dark:text-blue-400 disabled:opacity-50"
+                  >
+                    {estimatingCost ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    AI estimate
+                  </button>
                 )}
                 {selectedItem.diyDifficulty && (
                   <p className={`text-[10px] font-semibold mt-1 ${selectedItem.diyDifficulty === "Easy" ? "text-emerald-600" : selectedItem.diyDifficulty === "Moderate" ? "text-amber-600" : selectedItem.diyDifficulty === "Hard" ? "text-red-600" : "text-neutral-900 dark:text-neutral-100"}`}>
@@ -628,7 +698,14 @@ export default function WishListPage() {
                 {selectedItem.hiredCost != null ? (
                   <RoiBadge rating={selectedItem.hiredRoiRating} roi={selectedItem.hiredRoi} size="sm" />
                 ) : (
-                  <p className="text-[10px] text-neutral-400">Edit to add cost</p>
+                  <button
+                    onClick={() => handleAiCostEstimate(selectedItem)}
+                    disabled={estimatingCost}
+                    className="mx-auto mt-1 flex items-center gap-1 text-[10px] font-medium text-blue-600 dark:text-blue-400 disabled:opacity-50"
+                  >
+                    {estimatingCost ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    AI estimate
+                  </button>
                 )}
               </div>
             </div>

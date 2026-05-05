@@ -342,18 +342,21 @@ If the user hasn't provided a cost estimate, set estimateIsReasonable to true an
 
 export interface DailyFocus {
   greeting: string;
+  budgetMinutes: number;
+  totalMinutes: number;
   tasks: Array<{
     id: string;
     task: string;
     reason: string;
     estimatedMinutes: number;
+    impactLabel: string;
   }>;
 }
 
-export async function startMyDay(tasks: Task[]): Promise<DailyFocus> {
+export async function startMyDay(tasks: Task[], budgetMinutes = 30): Promise<DailyFocus> {
   const activeTasks = tasks.filter((t) => t.status !== "Completed");
   if (activeTasks.length === 0) {
-    return { greeting: "All clear! Nothing on your plate today.", tasks: [] };
+    return { greeting: "All clear! Nothing on your plate today.", budgetMinutes, totalMinutes: 0, tasks: [] };
   }
 
   const seasonalContext = buildSeasonalContext();
@@ -370,7 +373,16 @@ export async function startMyDay(tasks: Task[]): Promise<DailyFocus> {
 
 ${seasonalContext}
 
-Pick 3-5 tasks for today from this list. Favor overdue items, weather-sensitive tasks, quick wins, and anything that prevents damage if delayed. Don't pick more than 5.
+The homeowner has ${budgetMinutes} minutes available today.
+
+Pick the highest-impact set of active tasks that can realistically be completed within ${budgetMinutes} total minutes. Impact means damage prevention, urgency, priority, seasonal timing, cost avoided, and practical home benefit.
+
+Rules:
+- Total estimatedMinutes must be less than or equal to ${budgetMinutes}.
+- Return fewer tasks if only one or two high-impact tasks fit.
+- If no task fits, return an empty tasks array.
+- Do not include partial tasks that cannot be completed inside the time budget.
+- Do not pick more than 5 tasks.
 
 ACTIVE TASKS:
 ${taskList}
@@ -378,12 +390,15 @@ ${taskList}
 Return a JSON object:
 {
   "greeting": "A friendly 1-sentence greeting that references the day, weather, or season. Be conversational, not robotic.",
+  "budgetMinutes": ${budgetMinutes},
+  "totalMinutes": <sum of selected task estimatedMinutes, never above ${budgetMinutes}>,
   "tasks": [
     {
       "id": "the task ID from the list",
       "task": "the task name",
       "reason": "why this should be done today — 5-8 words max",
-      "estimatedMinutes": <realistic number>
+      "estimatedMinutes": <realistic number>,
+      "impactLabel": "Prevents damage | Quick win | Overdue | Seasonal | Safety | High value"
     }
   ]
 }
@@ -393,13 +408,33 @@ Return ONLY the JSON object.`, 1024);
   const match = text.match(/\{[\s\S]*\}/);
   if (match) {
     try {
-      return JSON.parse(match[0]) as DailyFocus;
+      const parsed = JSON.parse(match[0]) as DailyFocus;
+      const validIds = new Set(activeTasks.map((t) => t.id));
+      let totalMinutes = 0;
+      const selectedTasks = (parsed.tasks ?? []).filter((task) => {
+        if (!validIds.has(task.id)) return false;
+        const minutes = Number(task.estimatedMinutes);
+        if (!Number.isFinite(minutes) || minutes <= 0) return false;
+        const roundedMinutes = Math.round(minutes);
+        if (totalMinutes + roundedMinutes > budgetMinutes) return false;
+        task.estimatedMinutes = roundedMinutes;
+        task.impactLabel = task.impactLabel || "High value";
+        totalMinutes += roundedMinutes;
+        return true;
+      });
+
+      return {
+        greeting: parsed.greeting || "Let's get the best-fit work done today.",
+        budgetMinutes,
+        totalMinutes,
+        tasks: selectedTasks,
+      };
     } catch {
       // fall through
     }
   }
 
-  return { greeting: "Let's get things done today.", tasks: [] };
+  return { greeting: "Let's get the best-fit work done today.", budgetMinutes, totalMinutes: 0, tasks: [] };
 }
 
 // --- Wish List Project Planner ---

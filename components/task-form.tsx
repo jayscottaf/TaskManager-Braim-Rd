@@ -168,6 +168,9 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
           notes: buildNotesWithPhotos() || undefined,
           tags,
           workMode: taskWorkMode || undefined,
+          ...(status === "Completed" && !task?.dateCompleted
+            ? { dateCompleted: { start: new Date().toISOString().split("T")[0] } }
+            : {}),
         };
         await fetch(`/api/tasks/${task!.id}`, {
           method: "PATCH",

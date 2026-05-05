@@ -34,10 +34,13 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    // If marking as completed, fetch current task to check for recurrence
+    // If marking as completed, fetch current task to stamp completion date and check recurrence.
     let nextTask = null;
     if (body.status === "Completed") {
       const current = await getTask(id);
+      if (!body.dateCompleted && !current.dateCompleted) {
+        body.dateCompleted = { start: new Date().toISOString().split("T")[0] };
+      }
       const freq = current.frequency;
       if (
         freq &&
