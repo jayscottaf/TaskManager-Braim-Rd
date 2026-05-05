@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     const budgetMinutes = Math.round(minutes);
     const today = new Date().toISOString().split("T")[0];
-    const cacheKey = `start-my-day:${today}:${budgetMinutes}`;
+    const cacheKey = `start-my-day:v3:${today}:${budgetMinutes}`;
     const cached = getCached<DailyFocus>(cacheKey);
     if (cached) return NextResponse.json(cached);
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Sparkles, Check, Clock, EyeOff, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import type { DailyFocus } from "@/lib/ai";
 import { showToast } from "@/components/toast";
@@ -207,9 +208,9 @@ export function StartMyDay() {
         {visibleTasks.map((t) => (
           <div
             key={t.id}
-            className="flex items-center gap-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl px-3 py-2.5"
+            className="flex items-center gap-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl px-3 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
           >
-            <div className="flex-1 min-w-0">
+            <Link href={`/task/${t.id}`} className="flex-1 min-w-0 -my-2.5 py-2.5">
               <div className="flex items-center gap-2 min-w-0">
                 <p className="text-neutral-900 dark:text-neutral-50 text-sm font-medium truncate">{t.task}</p>
                 <span className="px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-300 text-[10px] font-semibold flex-shrink-0">
@@ -217,7 +218,7 @@ export function StartMyDay() {
                 </span>
               </div>
               <p className="text-neutral-500 dark:text-neutral-400 text-[11px]">{t.reason} - ~{fmtTime(t.estimatedMinutes)}</p>
-            </div>
+            </Link>
             <div className="flex items-center gap-1 flex-shrink-0">
               <button
                 onClick={() => markDone(t.id)}

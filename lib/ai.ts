@@ -353,8 +353,45 @@ export interface DailyFocus {
   }>;
 }
 
+function estimateTaskMinutes(task: Task): number {
+  const name = `${task.task} ${task.notes ?? ""}`.toLowerCase();
+  const types = task.type.join(" ").toLowerCase();
+  const cost = task.costEstimate ?? 0;
+  let minutes = 20;
+
+  if (cost >= 1000) minutes = Math.max(minutes, 360);
+  else if (cost >= 500) minutes = Math.max(minutes, 240);
+  else if (cost >= 250) minutes = Math.max(minutes, 120);
+  else if (cost >= 100) minutes = Math.max(minutes, 60);
+  else if (cost >= 50) minutes = Math.max(minutes, 45);
+
+  if (/\b(water damage|ceiling repair|drywall|concrete|header|door alignment|replace|repair)\b/.test(name)) {
+    minutes = Math.max(minutes, 120);
+  }
+  if (/\bpaint|painting|stain|trim|porch\b/.test(`${name} ${types}`)) {
+    minutes = Math.max(minutes, 90);
+  }
+  if (/\binspect|check|tighten|test\b/.test(name)) {
+    minutes = Math.max(minutes, 20);
+  }
+  if (/\bclean|seal|screens|bulbs|lighting fixtures\b/.test(name)) {
+    minutes = Math.max(minutes, 45);
+  }
+
+  return minutes;
+}
+
 export async function startMyDay(tasks: Task[], budgetMinutes = 30): Promise<DailyFocus> {
-  const activeTasks = tasks.filter((t) => t.status !== "Completed");
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const activeTasks = tasks.filter((t) => {
+    if (t.status === "Completed") return false;
+    if (!t.dueDate?.start) return true;
+    const dueDate = new Date(t.dueDate.start);
+    if (Number.isNaN(dueDate.getTime())) return true;
+    dueDate.setHours(0, 0, 0, 0);
+    return dueDate.getTime() <= todayStart.getTime();
+  });
   if (activeTasks.length === 0) {
     return { greeting: "All clear! Nothing on your plate today.", budgetMinutes, totalMinutes: 0, tasks: [] };
   }
@@ -364,8 +401,10 @@ export async function startMyDay(tasks: Task[], budgetMinutes = 30): Promise<Dai
 
   const taskList = activeTasks
     .map(
-      (t) =>
-        `- ID: ${t.id} | "${t.task}" | Priority: ${t.priority || "none"} | Area: ${t.area || "none"} | Due: ${t.dueDate?.start || "none"} | Status: ${t.status} | Cost: $${t.costEstimate || "?"} | WorkMode: ${t.workMode || "undecided"} | Tags: ${t.tags.join(", ") || "none"}`
+      (t) => {
+        const realisticMinutes = estimateTaskMinutes(t);
+        return `- ID: ${t.id} | "${t.task}" | Priority: ${t.priority || "none"} | Area: ${t.area || "none"} | Due: ${t.dueDate?.start || "none"} | Status: ${t.status} | Cost: $${t.costEstimate || "?"} | Minimum realistic time: ${realisticMinutes} minutes | WorkMode: ${t.workMode || "undecided"} | Tags: ${t.tags.join(", ") || "none"}`;
+      }
     )
     .join("\n");
 
@@ -378,7 +417,9 @@ The homeowner has ${budgetMinutes} minutes available today.
 Pick the highest-impact set of active tasks that can realistically be completed within ${budgetMinutes} total minutes. Impact means damage prevention, urgency, priority, seasonal timing, cost avoided, and practical home benefit.
 
 Rules:
+- Select only tasks from ACTIVE TASKS. This list excludes completed work and future recurring copies that are not due yet.
 - Total estimatedMinutes must be less than or equal to ${budgetMinutes}.
+- estimatedMinutes must be at least the task's Minimum realistic time.
 - Return fewer tasks if only one or two high-impact tasks fit.
 - If no task fits, return an empty tasks array.
 - Do not include partial tasks that cannot be completed inside the time budget.
@@ -409,13 +450,14 @@ Return ONLY the JSON object.`, 1024);
   if (match) {
     try {
       const parsed = JSON.parse(match[0]) as DailyFocus;
-      const validIds = new Set(activeTasks.map((t) => t.id));
+      const activeById = new Map(activeTasks.map((t) => [t.id, t]));
       let totalMinutes = 0;
       const selectedTasks = (parsed.tasks ?? []).filter((task) => {
-        if (!validIds.has(task.id)) return false;
+        const sourceTask = activeById.get(task.id);
+        if (!sourceTask) return false;
         const minutes = Number(task.estimatedMinutes);
         if (!Number.isFinite(minutes) || minutes <= 0) return false;
-        const roundedMinutes = Math.round(minutes);
+        const roundedMinutes = Math.max(Math.round(minutes), estimateTaskMinutes(sourceTask));
         if (totalMinutes + roundedMinutes > budgetMinutes) return false;
         task.estimatedMinutes = roundedMinutes;
         task.impactLabel = task.impactLabel || "High value";
