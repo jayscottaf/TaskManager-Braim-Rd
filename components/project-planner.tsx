@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { Camera, ImagePlus, Loader2, Sparkles, X } from "lucide-react";
 import type { WishListPlan } from "@/lib/ai";
+import { openLightbox } from "@/components/lightbox";
 
 const AI_MAX_SIZE = 1024;   // smaller for AI analysis
 const STORAGE_MAX_SIZE = 2048; // larger for display quality
@@ -132,7 +133,7 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
           {previews.map((src, i) => (
             <div key={i} className="relative w-20 h-20 flex-shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src} alt={`Photo ${i + 1}`} className="w-20 h-20 object-cover rounded-xl" />
+              <img src={src} alt={`Photo ${i + 1}`} className="w-20 h-20 object-cover rounded-xl cursor-pointer hover:opacity-90 transition-opacity" onClick={() => openLightbox(previews, i)} />
               <button
                 onClick={() => removePhoto(i)}
                 className="absolute -top-1.5 -right-1.5 bg-black/60 text-white rounded-full p-0.5"

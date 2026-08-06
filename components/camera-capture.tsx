@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { Camera, Loader2, X, Plus } from "lucide-react";
 import type { PhotoClassification } from "@/lib/ai";
+import { openLightbox } from "@/components/lightbox";
 
 interface CameraCaptureProps {
   onClassified: (result: PhotoClassification, photoUrls: string[]) => void;
@@ -119,7 +120,7 @@ export function CameraCapture({ onClassified }: CameraCaptureProps) {
             {previews.map((url, i) => (
               <div key={i} className="relative flex-shrink-0 snap-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt={`Photo ${i + 1}`} className="w-36 h-28 object-cover rounded-xl shadow-sm" />
+                <img src={url} alt={`Photo ${i + 1}`} className="w-36 h-28 object-cover rounded-xl shadow-sm cursor-pointer hover:opacity-90 transition-opacity" onClick={() => openLightbox(previews, i)} />
                 <button
                   onClick={() => removePhoto(i)}
                   className="absolute top-1 right-1 bg-black/50 text-white rounded-lg p-1 hover:bg-black/70 transition-colors"

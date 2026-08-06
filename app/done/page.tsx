@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, CheckCircle, Calendar, Trophy, Flame } from "lucide-react";
 import { getTasks } from "@/lib/notion";
 import { ErrorDetails } from "@/components/error-details";
+import { PhotoGallery } from "@/components/photo-gallery";
 import { PageMenu } from "@/components/page-menu";
 import type { Task } from "@/lib/types";
 
@@ -155,12 +156,7 @@ export default async function DonePage() {
           {allPhotos.length > 0 && (
             <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden">
               <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium px-5 pt-4 pb-2">Photo Gallery</p>
-              <div className="flex gap-1 overflow-x-auto snap-x snap-mandatory pb-3 px-1">
-                {allPhotos.slice(0, 20).map((url, i) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={i} src={url} alt={`Completed work ${i + 1}`} className="w-48 h-36 flex-shrink-0 snap-center object-cover rounded-lg" />
-                ))}
-              </div>
+              <PhotoGallery photos={allPhotos.slice(0, 20)} />
             </div>
           )}
 

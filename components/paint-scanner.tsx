@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { Camera, Loader2, X, ScanLine } from "lucide-react";
 import type { PaintLabelScan } from "@/lib/ai";
+import { openLightbox } from "@/components/lightbox";
 
 interface PaintScannerProps {
   onScanned: (data: Record<string, string>) => void;
@@ -120,7 +121,8 @@ export function PaintScanner({ onScanned }: PaintScannerProps) {
           <img
             src={preview}
             alt="Paint label"
-            className="w-full h-48 object-cover rounded-2xl shadow-sm"
+            className="w-full h-48 object-cover rounded-2xl shadow-sm cursor-pointer"
+            onClick={() => { if (!loading) openLightbox([preview]); }}
           />
           {loading && (
             <div className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center backdrop-blur-sm">
@@ -131,7 +133,7 @@ export function PaintScanner({ onScanned }: PaintScannerProps) {
             </div>
           )}
           {scanned && !loading && (
-            <div className="absolute inset-0 bg-green-900/30 rounded-2xl flex items-center justify-center">
+            <div className="absolute inset-0 bg-green-900/30 rounded-2xl flex items-center justify-center pointer-events-none">
               <span className="text-sm font-semibold text-white bg-green-600 px-3 py-1 rounded-lg">
                 Label scanned — fields pre-filled below
               </span>

@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import type { WishListItem } from "@/lib/wishlist";
 import type { WishListPlan } from "@/lib/ai";
 import { PageMenu } from "@/components/page-menu";
+import { openLightbox } from "@/components/lightbox";
 import { ProjectPlanner } from "@/components/project-planner";
 import { CostSummary } from "@/components/cost-summary";
 import { RoiBadge } from "@/components/roi-badge";
@@ -630,12 +631,12 @@ export default function WishListPage() {
             <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden">
               {selectedItem.photos.length === 1 ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={selectedItem.photos[0]} alt={selectedItem.project} className="w-full object-contain max-h-72" />
+                <img src={selectedItem.photos[0]} alt={selectedItem.project} className="w-full object-contain max-h-72 cursor-pointer" onClick={() => openLightbox(selectedItem.photos)} />
               ) : (
                 <div className="flex gap-1 overflow-x-auto snap-x snap-mandatory">
                   {selectedItem.photos.map((url, i) => (
                     /* eslint-disable-next-line @next/next/no-img-element */
-                    <img key={i} src={url} alt={`${selectedItem.project} ${i + 1}`} className="w-full flex-shrink-0 snap-center object-contain max-h-72" />
+                    <img key={i} src={url} alt={`${selectedItem.project} ${i + 1}`} className="w-full flex-shrink-0 snap-center object-contain max-h-72 cursor-pointer" onClick={() => openLightbox(selectedItem.photos, i)} />
                   ))}
                 </div>
               )}

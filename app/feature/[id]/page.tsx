@@ -9,6 +9,7 @@ import { getInstalledFeature, saveInstalledFeature } from "@/lib/feature-store";
 import { DynamicForm } from "@/components/dynamic-form";
 import { PaintScanner } from "@/components/paint-scanner";
 import { ColorantTable } from "@/components/colorant-table";
+import { openLightbox } from "@/components/lightbox";
 
 const FULL_DISPLAY_FIELDS = new Set(["Colorant Formula"]);
 
@@ -236,7 +237,8 @@ export default function FeaturePage() {
                 <img
                   src={selectedItem["Photo"]}
                   alt={selectedItem[titleField] || "Photo"}
-                  className="w-full object-contain max-h-72"
+                  className="w-full object-contain max-h-72 cursor-pointer"
+                  onClick={() => openLightbox([selectedItem["Photo"]])}
                 />
               </div>
             )}

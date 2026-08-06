@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, Loader2 } from "lucide-react";
 import { showToast } from "@/components/toast";
+import { openLightbox } from "@/components/lightbox";
 import type {
   Task,
   CreateTaskInput,
@@ -590,7 +591,7 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
           {taskPhotos.map((url, i) => (
             <div key={i} className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt={`Photo ${i + 1}`} className="w-20 h-20 object-cover rounded-lg" />
+              <img src={url} alt={`Photo ${i + 1}`} className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity" onClick={() => openLightbox(taskPhotos, i)} />
               <button
                 type="button"
                 onClick={() => setTaskPhotos((prev) => prev.filter((_, j) => j !== i))}
@@ -643,7 +644,7 @@ export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormPr
             <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Add an &quot;after&quot; photo? (optional)</p>
             {afterPhotoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={afterPhotoUrl} alt="After photo" className="w-full max-h-48 object-contain rounded-lg" />
+              <img src={afterPhotoUrl} alt="After photo" className="w-full max-h-48 object-contain rounded-lg cursor-pointer" onClick={() => openLightbox([afterPhotoUrl])} />
             ) : (
               <label className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-emerald-300 dark:border-emerald-700 cursor-pointer text-sm text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/40 transition-colors ${uploadingPhoto ? "opacity-50 pointer-events-none" : ""}`}>
                 {uploadingPhoto ? "Uploading..." : "Tap to take or select photo"}

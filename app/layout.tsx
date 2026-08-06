@@ -3,6 +3,7 @@ import { Fraunces } from "next/font/google";
 import { BottomNav } from "@/components/bottom-nav";
 import { DesktopSidebar } from "@/components/desktop-sidebar";
 import { ToastProvider } from "@/components/toast";
+import { LightboxProvider } from "@/components/lightbox";
 import { ServiceWorkerRegister } from "@/components/sw-register";
 import "./globals.css";
 
@@ -65,6 +66,7 @@ export default function RootLayout({
           <BottomNav />
         </div>
         <ToastProvider />
+        <LightboxProvider />
         <ServiceWorkerRegister />
       </body>
     </html>
