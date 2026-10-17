@@ -43,6 +43,8 @@ export interface Task {
   isDeadline?: boolean;
   /** Internal recurrence metadata; never a user-facing classification. */
   recurrenceAnchor?: { start: string; end?: string } | null;
+  /** The completed task that generated this repeat, when recorded by the app. */
+  recurrenceSource?: string | null;
   nextOccurrencePending?: boolean;
   assignedTo: string[];
   contractorVendor: string | null;

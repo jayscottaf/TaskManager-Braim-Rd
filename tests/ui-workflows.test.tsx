@@ -5,6 +5,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskForm } from "../components/task-form";
 import { TaskCard } from "../components/task-card";
+import { HomePlanStorageSync, StartMyDay } from "../components/start-my-day";
+import { emptyHomePlan, PLAN_STORAGE_KEY } from "../lib/home-plan";
 import type { Task } from "../lib/types";
 import type { ImageUploadResult } from "../lib/image-client";
 
@@ -240,4 +242,73 @@ it("displays a missed target neutrally while keeping a genuine missed deadline i
   expect(within(target).getByText("Planned for Apr 15, 2000")).toBeTruthy();
   expect(within(target).queryByText(/overdue|deadline passed/i)).toBeNull();
   expect(within(deadline).getByText("Deadline passed: Apr 15, 2000")).toBeTruthy();
+});
+
+describe("completion stays clear before refreshed server data arrives", () => {
+  it("removes a completed task immediately, explains its next repeat, and ignores double submissions", async () => {
+    let finish!: (response: Response) => void;
+    fetchMock.mockReturnValue(new Promise<Response>((resolve) => { finish = resolve; }));
+    render(<TaskCard task={task({ frequency: "Annually", dueDate: { start: "2026-04-15" } })} />);
+    const status = screen.getByRole("combobox", { name: "Status for Mulch garden" });
+    fireEvent.change(status, { target: { value: "Completed" } });
+    fireEvent.change(status, { target: { value: "Completed" } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("heading", { name: "Mulch garden" })).toBeTruthy();
+
+    await act(async () => finish(new Response(JSON.stringify({ ...task({ status: "Completed" }), nextOccurrence: task({ id: "next", dueDate: { start: "2027-04-15" } }) }), { status: 200 })));
+    expect(screen.queryByRole("heading", { name: "Mulch garden" })).toBeNull();
+    expect(notices.showToast).toHaveBeenCalledWith("Completed. Next repeat: Apr 15, 2027.", "success");
+    expect(navigation.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes future repeats viewable without inviting another quick completion", () => {
+    render(<TaskCard task={task({ frequency: "Annually", dueDate: { start: "2099-04-15" } })} />);
+    expect(screen.getByText("Next repeat: Apr 15, 2099")).toBeTruthy();
+    expect(screen.getByText("No action needed now.")).toBeTruthy();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add to plan" })).toBeNull();
+    expect(screen.getByRole("link", { name: "View or reschedule" }).getAttribute("href")).toContain("/task/task-1");
+  });
+
+  it("restores the card after a rejected completion, and keeps a direct recovery link for saved pending scheduling", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: "Unavailable" }), { status: 503 }));
+    render(<TaskCard task={task()} />);
+    await user.selectOptions(screen.getByRole("combobox", { name: "Status for Mulch garden" }), "Completed");
+    await waitFor(() => expect((screen.getByRole("combobox", { name: "Status for Mulch garden" }) as HTMLSelectElement).value).toBe("Not Started"));
+    expect(screen.getByText(/previous value has been restored/)).toBeTruthy();
+
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ saved: true, recurrencePending: true, error: "Completion saved; scheduling needs retry." }), { status: 502 }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Status for Mulch garden" }), "Completed");
+    expect(await screen.findByRole("link", { name: "Finish scheduling next repeat" })).toBeTruthy();
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("removes finished plan cards, frees their slots, and keeps future repeats out of the plan", async () => {
+    const user = userEvent.setup();
+    const tasks = ["A", "B", "C", "D"].map((letter) => task({ id: letter, task: `Inspect ${letter}` }));
+    const future = task({ id: "future", task: "Next year's inspection", frequency: "Annually", dueDate: { start: "2099-04-15" } });
+    localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify({ ...emptyHomePlan(), budgetMinutes: 120, selectedIds: ["A", "B", "C"] }));
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ...tasks[0], status: "Completed", nextOccurrence: future }), { status: 200 }));
+    render(<StartMyDay tasks={[...tasks, future]} />);
+    expect(screen.queryByRole("button", { name: "Complete Next year's inspection" })).toBeNull();
+    await user.click(await screen.findByRole("button", { name: "Complete Inspect A" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Complete Inspect A" })).toBeNull());
+    expect(screen.getByText(/Inspect A: Completed. Next repeat: Apr 15, 2099/)).toBeTruthy();
+    const suggestion = screen.getByRole("link", { name: "Inspect D" }).closest("article")!;
+    await user.click(within(suggestion).getByRole("button", { name: "Add to plan" }));
+    const saved = JSON.parse(localStorage.getItem(PLAN_STORAGE_KEY)!);
+    expect(saved.selectedIds).toEqual(["B", "C", "D"]);
+    expect(screen.getByRole("button", { name: "Complete Inspect D" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Choose from all tasks/ })).toBeNull();
+  });
+
+  it("cleans completed picks before adding tasks from the full list", () => {
+    const completed = task({ id: "done", status: "Completed" });
+    const active = task({ id: "active" });
+    const future = task({ id: "future", frequency: "Annually", dueDate: { start: "2099-04-15" } });
+    localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify({ ...emptyHomePlan(), selectedIds: ["done", "active", "future"] }));
+    render(<HomePlanStorageSync tasks={[completed, active, future]} />);
+    expect(JSON.parse(localStorage.getItem(PLAN_STORAGE_KEY)!).selectedIds).toEqual(["active"]);
+  });
 });

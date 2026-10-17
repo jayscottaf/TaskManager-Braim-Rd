@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { format, parseISO } from "date-fns";
@@ -16,6 +16,8 @@ import {
   taskDateKey,
 } from "@/lib/home-plan";
 import { showToast } from "@/components/toast";
+import { completionNotice } from "@/lib/completion-notice";
+import { isUpcomingRepeat } from "@/lib/task-visibility";
 
 export function TaskCard({ task }: { task: Task }) {
   const router = useRouter();
@@ -27,10 +29,16 @@ export function TaskCard({ task }: { task: Task }) {
   const [status, setStatus] = useState<Status>(task.status);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
+  const [completed, setCompleted] = useState(false);
+  const [schedulingPending, setSchedulingPending] = useState(false);
+  const saving = useRef(false);
   const overdue = isOverdueDeadline({ ...task, status });
   const date = taskDateKey(task);
+  const upcoming = isUpcomingRepeat({ ...task, status });
 
   async function updateField(field: "priority" | "status", value: string) {
+    if (saving.current || completed) return;
+    saving.current = true;
     const previousPriority = priority;
     const previousStatus = status;
     if (field === "priority") setPriority(value as Priority);
@@ -50,17 +58,30 @@ export function TaskCard({ task }: { task: Task }) {
       const result = (await response.json().catch(() => null)) as {
         saved?: boolean;
         error?: string;
+        code?: string;
+        nextOccurrence?: Task;
       } | null;
       if (!response.ok && result?.saved) {
         const notice =
           result.error ||
           "Task saved, but the next repeat needs retrying. Open the task to finish scheduling.";
         setMessage(notice);
+        if (field === "status" && value === "Completed") setCompleted(true);
+        setSchedulingPending(true);
         showToast(notice, "error");
         router.refresh();
         return;
       }
+      if (!response.ok && result?.code === "EARLY_RECURRENCE_COMPLETION") {
+        setStatus(previousStatus);
+        setMessage("This is a future repeat. Open the task to review it before completing it early.");
+        return;
+      }
       if (!response.ok) throw new Error("Update was not saved");
+      if (field === "status" && value === "Completed") {
+        setCompleted(true);
+        showToast(completionNotice(result?.nextOccurrence), "success");
+      }
       setMessage("Saved.");
       router.refresh();
     } catch {
@@ -71,6 +92,7 @@ export function TaskCard({ task }: { task: Task }) {
       );
       showToast("Could not save task. Please try again.", "error");
     } finally {
+      saving.current = false;
       setPending(false);
     }
   }
@@ -98,6 +120,15 @@ export function TaskCard({ task }: { task: Task }) {
       );
     }
   }
+
+  if (completed) return schedulingPending ? (
+    <div role="alert" className="rounded-2xl border border-neutral-200 p-4 text-sm dark:border-neutral-800">
+      <p>{task.task} is completed. Its next repeat still needs scheduling.</p>
+      <Link href={taskHref} className="inline-flex min-h-11 items-center font-medium text-blue-600 dark:text-blue-400">
+        Finish scheduling next repeat
+      </Link>
+    </div>
+  ) : null;
 
   return (
     <article
@@ -127,7 +158,7 @@ export function TaskCard({ task }: { task: Task }) {
                 ? "Deadline passed: "
                 : task.isDeadline
                   ? "Deadline: "
-                  : "Planned for "}
+                  : upcoming ? "Next repeat: " : "Planned for "}
               {format(parseISO(date), "MMM d, yyyy")}
             </span>
           )}
@@ -139,7 +170,14 @@ export function TaskCard({ task }: { task: Task }) {
           )}
         </div>
       </Link>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      {upcoming ? (
+        <div className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
+          <p>No action needed now.</p>
+          <Link href={taskHref} className="inline-flex min-h-11 items-center font-medium text-blue-600 dark:text-blue-400">
+            View or reschedule
+          </Link>
+        </div>
+      ) : <div className="mt-3 flex flex-wrap items-center gap-2">
         <select
           aria-label={`Priority for ${task.task}`}
           value={priority || ""}
@@ -179,7 +217,7 @@ export function TaskCard({ task }: { task: Task }) {
             Add to plan
           </button>
         )}
-      </div>
+      </div>}
       <p
         role="status"
         aria-live="polite"

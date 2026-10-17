@@ -27,14 +27,20 @@ export function advanceDate(dateStr: string, frequency: Frequency, steps = 1): s
 
 type TaskDate = NonNullable<Task["dueDate"]>;
 
-/** Use the original anchor on every step so Jan 31 → Feb 28 → Mar 31. */
-export function nextOccurrenceDate(task: Pick<Task, "dueDate" | "frequency" | "recurrenceAnchor">): TaskDate | null {
+/**
+ * Use the original anchor on every step so Jan 31 → Feb 28 → Mar 31.
+ * Completion can supply its saved day to skip missed periods in one step.
+ */
+export function nextOccurrenceDate(task: Pick<Task, "dueDate" | "frequency" | "recurrenceAnchor">, afterDate?: string): TaskDate | null {
   if (!task.dueDate?.start || !task.frequency || task.frequency === "One-time") return null;
   const anchor = task.recurrenceAnchor ?? task.dueDate;
+  const plannedDate = task.dueDate.start.slice(0, 10);
+  const completedDate = afterDate?.slice(0, 10);
+  const lowerBound = completedDate && completedDate > plannedDate ? completedDate : plannedDate;
   for (let step = 1; step <= 1200; step++) {
     const start = advanceDate(anchor.start, task.frequency, step);
     if (!start) return null;
-    if (start > task.dueDate.start.slice(0, 10)) {
+    if (start > lowerBound) {
       const end = anchor.end ? advanceDate(anchor.end, task.frequency, step) : undefined;
       return { start, ...(end && end >= start ? { end } : {}) };
     }

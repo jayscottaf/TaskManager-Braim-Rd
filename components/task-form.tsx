@@ -11,6 +11,7 @@ import { RequestError, requestJson, safeReturnTo, taskRequestHeaders } from "@/l
 import { initialTaskDraft, draftUpdate, mergePhotoSuggestions, recoverPendingCompletion, validateTaskDraft, type TaskDraft } from "@/lib/task-form-data";
 import { parseTaskNotes } from "@/lib/task-notes";
 import { householdDateKey } from "@/lib/household-date";
+import { completionNotice } from "@/lib/completion-notice";
 import { analyzeUploadedImage, uploadImage } from "@/lib/image-client";
 import type { PhotoClassification, TaskAnalysis } from "@/lib/ai";
 import type { Task, CreateTaskInput, Priority, Area, Frequency, Status } from "@/lib/types";
@@ -46,6 +47,7 @@ export function TaskForm({ task, mode, returnTo, aiUpdate, children }: TaskFormP
   const [uploadCount, setUploadCount] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showCompletePhoto, setShowCompletePhoto] = useState(false);
+  const [serverEarlyCompletionDate, setServerEarlyCompletionDate] = useState<string | null>(null);
   const [afterPhotoUrl, setAfterPhotoUrl] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [completionPhotos] = useState(() => parseTaskNotes(task?.notes).afterPhotos);
@@ -55,9 +57,16 @@ export function TaskForm({ task, mode, returnTo, aiUpdate, children }: TaskFormP
   const mutationInFlight = useRef(false);
   const appliedAIRevision = useRef<number | null>(null);
   const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completionReview = useRef<HTMLElement | null>(null);
   const busy = saving || uploadCount > 0;
+  const futureRepeatDate = task?.status !== "Completed" && draft.frequency && draft.frequency !== "One-time" && draft.date.slice(0, 10) > localToday()
+    ? draft.date.slice(0, 10) : null;
+  const earlyCompletionDate = serverEarlyCompletionDate ?? futureRepeatDate;
 
   useEffect(() => () => { if (deleteTimer.current) clearTimeout(deleteTimer.current); }, []);
+  useEffect(() => {
+    if (showCompletePhoto) completionReview.current?.focus();
+  }, [showCompletePhoto]);
 
   useEffect(() => {
     if (!aiUpdate || appliedAIRevision.current === aiUpdate.revision) return;
@@ -77,6 +86,7 @@ export function TaskForm({ task, mode, returnTo, aiUpdate, children }: TaskFormP
 
   function update<K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) {
     touched.current.add(key);
+    if (key === "date" || key === "frequency") setServerEarlyCompletionDate(null);
     setDraft((previous) => ({ ...previous, [key]: value }));
   }
 
@@ -137,7 +147,7 @@ export function TaskForm({ task, mode, returnTo, aiUpdate, children }: TaskFormP
     }
   }
 
-  async function saveTask(complete = false) {
+  async function saveTask(complete = false, confirmEarlyCompletion = false) {
     if (mutationInFlight.current) return;
     if (pendingUploads.current) {
       setError("Wait for your photos to finish uploading, then save.");
@@ -145,20 +155,25 @@ export function TaskForm({ task, mode, returnTo, aiUpdate, children }: TaskFormP
     }
     const validation = validateTaskDraft(draft);
     if (validation) { setError(validation); return; }
+    const status = complete || recurrencePending ? "Completed" : draft.status;
+    if (mode === "edit" && status === "Completed" && !recurrencePending && earlyCompletionDate && !confirmEarlyCompletion) {
+      setShowCompletePhoto(true);
+      setError(null);
+      return;
+    }
     mutationInFlight.current = true;
     setSaving(true);
     setError(null);
     try {
-      const status = complete || recurrencePending ? "Completed" : draft.status;
       const body = draftUpdate(draft, attachments.current, status, status === "Completed" ? afterPhotoUrl : null);
       if (mode === "edit") {
         if (!task?.id) throw new Error("This task could not be identified. Please reopen it and try again.");
         if (status === "Completed" && task.status !== "Completed" && !draft.completedDate) body.dateCompleted = { start: localToday() };
         const data = await requestJson<{ nextOccurrence?: Task }>(`/api/tasks/${task.id}`, {
-          method: "PATCH", headers: taskRequestHeaders(), body: JSON.stringify(body),
+          method: "PATCH", headers: taskRequestHeaders(), body: JSON.stringify({ ...body, ...(confirmEarlyCompletion ? { confirmEarlyCompletion: true } : {}) }),
         });
-        if (complete || recurrencePending) {
-          showToast(data?.nextOccurrence ? `Completed. Next occurrence planned for ${data.nextOccurrence.dueDate?.start ?? "later"}.` : "Task completed!", "success");
+        if (status === "Completed" && (task.status !== "Completed" || recurrencePending)) {
+          showToast(completionNotice(data?.nextOccurrence), "success");
         } else showToast("Changes saved", "success");
       } else {
         // Null explicitly clears fields on edit; new tasks simply omit unused optional values.
@@ -169,6 +184,15 @@ export function TaskForm({ task, mode, returnTo, aiUpdate, children }: TaskFormP
       finishNavigation();
     } catch (cause) {
       if (cause instanceof RequestError && task?.id) {
+        if (cause.status === 409 && cause.body && typeof cause.body === "object" && "code" in cause.body && cause.body.code === "EARLY_RECURRENCE_COMPLETION") {
+          const plannedFor = "plannedFor" in cause.body ? cause.body.plannedFor : null;
+          if (typeof plannedFor === "string" && /^\d{4}-\d{2}-\d{2}$/.test(plannedFor)) {
+            setServerEarlyCompletionDate(plannedFor);
+            setShowCompletePhoto(true);
+            setError(null);
+            return;
+          }
+        }
         const recovered = recoverPendingCompletion(draft, cause.body, task.id);
         if (recovered) {
           setDraft((previous) => recoverPendingCompletion(previous, cause.body, task.id!) ?? previous);
@@ -185,7 +209,18 @@ export function TaskForm({ task, mode, returnTo, aiUpdate, children }: TaskFormP
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (showCompletePhoto && !recurrencePending) {
+      completionReview.current?.focus();
+      return;
+    }
     void saveTask();
+  }
+
+  function cancelCompletion() {
+    setShowCompletePhoto(false);
+    setServerEarlyCompletionDate(null);
+    // Selecting Completed in More details is also only a pending completion until saved.
+    if (draft.status === "Completed" && task?.status !== "Completed") update("status", task?.status ?? "Not Started");
   }
 
   async function handleDelete() {
@@ -304,28 +339,33 @@ export function TaskForm({ task, mode, returnTo, aiUpdate, children }: TaskFormP
           </div>
         </details>
 
-        {mode === "edit" && draft.status !== "Completed" && !recurrencePending && (
+        {mode === "edit" && (draft.status !== "Completed" || showCompletePhoto) && !recurrencePending && (
           <div className="flex flex-col gap-3">
-            {!showCompletePhoto ? <button type="button" onClick={() => setShowCompletePhoto(true)} disabled={busy} className={secondaryButton}>Mark complete</button> : <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 p-4">
+            {!showCompletePhoto ? <button type="button" onClick={() => setShowCompletePhoto(true)} disabled={busy} className={secondaryButton}>Mark complete</button> : <section ref={completionReview} tabIndex={-1} aria-label="Review task completion" className="flex flex-col gap-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">
+              {earlyCompletionDate && <p id="early-repeat-warning" className="text-sm font-medium">This repeat is planned for {formatPlannedDate(earlyCompletionDate)}. Complete it early?</p>}
               <p className="text-sm font-medium">Add a completion photo? (optional)</p>
               {afterPhotoUrl ? <button type="button" onClick={() => openLightbox([afterPhotoUrl])} aria-label="Open new completion photo"><TaskImage src={afterPhotoUrl} alt="New completion photo" width={360} height={200} sizes="(max-width: 512px) 80vw, 360px" className="w-full max-h-48 object-contain rounded-xl" /></button> : <label className={`${secondaryButton} flex items-center justify-center gap-2 cursor-pointer ${busy ? "opacity-50 pointer-events-none" : ""}`}><Camera className="w-4 h-4" />Add photo<input type="file" accept="image/*" capture="environment" className="sr-only" disabled={busy} aria-label="Add completion photo" onChange={(e) => { const file = e.target.files?.[0]; if (file) void addPhoto(file, true); e.target.value = ""; }} /></label>}
               <p className="text-sm text-neutral-500 dark:text-neutral-400">Completing also saves your current edits.</p>
-              <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => setShowCompletePhoto(false)} className={`${secondaryButton} flex-1`}>Cancel</button><button type="button" disabled={busy || !draft.name.trim()} onClick={() => void saveTask(true)} className="min-h-11 flex-1 px-3 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50">{saving ? "Saving…" : "Complete task"}</button></div>
-            </div>}
+              <div className="flex gap-2"><button type="button" disabled={busy} onClick={cancelCompletion} className={`${secondaryButton} flex-1`}>Cancel</button><button type="button" disabled={busy || !draft.name.trim()} aria-describedby={earlyCompletionDate ? "early-repeat-warning" : undefined} onClick={() => void saveTask(true, !!earlyCompletionDate)} className="min-h-11 flex-1 px-3 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50">{saving ? "Saving…" : earlyCompletionDate ? "Complete this repeat early" : "Complete task"}</button></div>
+            </section>}
           </div>
         )}
       </fieldset>
 
       <fieldset disabled={busy} className="contents">{children}</fieldset>
 
-      <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] -mx-5 px-5 py-3 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-lg border-t border-neutral-200 dark:border-neutral-800 z-30">
+      {(!showCompletePhoto || recurrencePending || error) && <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] -mx-5 px-5 py-3 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-lg border-t border-neutral-200 dark:border-neutral-800 z-30">
         {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300 mb-3">{error}</p>}
-        <button type="submit" disabled={busy || !draft.name.trim()} className="w-full min-h-12 py-3 rounded-xl bg-blue-600 text-white font-semibold text-base disabled:opacity-50 hover:bg-blue-700 transition-colors">{saving ? "Saving…" : uploadCount ? "Waiting for photo…" : recurrencePending ? "Retry scheduling" : mode === "create" ? "Save task" : "Save changes"}</button>
-      </div>
+        {(!showCompletePhoto || recurrencePending) && <button type="submit" disabled={busy || !draft.name.trim()} className="w-full min-h-12 py-3 rounded-xl bg-blue-600 text-white font-semibold text-base disabled:opacity-50 hover:bg-blue-700 transition-colors">{saving ? "Saving…" : uploadCount ? "Waiting for photo…" : recurrencePending ? "Retry scheduling" : mode === "create" ? "Save task" : "Save changes"}</button>}
+      </div>}
     </form>
   );
 }
 
 function localToday(): string {
   return householdDateKey();
+}
+
+function formatPlannedDate(date: string): string {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${date.slice(0, 10)}T12:00:00Z`));
 }

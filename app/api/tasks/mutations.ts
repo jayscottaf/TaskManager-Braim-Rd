@@ -9,13 +9,26 @@ export class RecurrencePendingError extends Error {
   }
 }
 
+export class EarlyRecurrenceCompletionError extends Error {
+  constructor(public readonly task: Task, public readonly plannedFor: string) {
+    super(`This recurring task is planned for ${plannedFor}. Confirm that you want to complete this future occurrence early.`);
+  }
+}
+
 /** Save the task first; persist retry intent in the same write as completion. */
-export async function updateTaskWithRecurrence(id: string, input: UpdateTaskInput): Promise<Task & { nextOccurrence?: Task }> {
+export async function updateTaskWithRecurrence(id: string, input: UpdateTaskInput, options?: { confirmEarlyCompletion?: boolean }): Promise<Task & { nextOccurrence?: Task }> {
   return withTaskMutation(id, async () => {
     const current = await getTask(id, { bypassCache: true });
     const changes = { ...input };
     const completionRequested = input.status === "Completed";
     const completing = completionRequested && current.status !== "Completed";
+    const effective = { ...current, ...input };
+    const plannedFor = effective.dueDate?.start.slice(0, 10);
+    // Older generated repeats have no source marker, so protect every future
+    // recurring occurrence. Completing history and retrying scheduling are safe.
+    if (completing && effective.frequency && effective.frequency !== "One-time" && plannedFor && plannedFor > householdDateKey() && !options?.confirmEarlyCompletion) {
+      throw new EarlyRecurrenceCompletionError(current, plannedFor);
+    }
     let pending = current.nextOccurrencePending ?? false;
     if (completionRequested) {
       if (completing) {
@@ -23,7 +36,7 @@ export async function updateTaskWithRecurrence(id: string, input: UpdateTaskInpu
         changes.dateCompleted = input.dateCompleted ?? current.dateCompleted ?? { start: householdDateKey() };
         const dateChanged = input.dueDate !== undefined && (input.dueDate?.start !== current.dueDate?.start || input.dueDate?.end !== current.dueDate?.end);
         const recurrenceAnchor = dateChanged ? input.dueDate : current.recurrenceAnchor;
-        pending = nextOccurrenceDate({ ...current, ...input, recurrenceAnchor }) !== null;
+        pending = nextOccurrenceDate({ ...current, ...input, recurrenceAnchor }, changes.dateCompleted?.start) !== null;
       }
     } else if (input.status !== undefined) {
       changes.dateCompleted = null;
@@ -36,7 +49,7 @@ export async function updateTaskWithRecurrence(id: string, input: UpdateTaskInpu
       // Identity is independent of edited title/date and survives a lost create response.
       let nextOccurrence = await findNextOccurrence(id);
       if (!nextOccurrence) {
-        const dueDate = nextOccurrenceDate(task);
+        const dueDate = nextOccurrenceDate(task, task.dateCompleted?.start);
         if (dueDate) {
           nextOccurrence = await createTask({
             task: task.task,

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const remote = vi.hoisted(() => ({
   databases: { query: vi.fn(), retrieve: vi.fn(), update: vi.fn() },
@@ -8,7 +8,7 @@ vi.mock("@notionhq/client", () => ({ Client: class { databases = remote.database
 
 import { clearCache, getCached, getOrLoadCached, setCache } from "../lib/cache";
 import { createTask, findWishlistTask, getTask, getTasks, updateTask } from "../lib/notion";
-import { RecurrencePendingError, updateTaskWithRecurrence } from "../app/api/tasks/mutations";
+import { EarlyRecurrenceCompletionError, RecurrencePendingError, updateTaskWithRecurrence } from "../app/api/tasks/mutations";
 import { validateTaskInput } from "../app/api/tasks/validation";
 import { PATCH } from "../app/api/tasks/[id]/route";
 import { NextRequest } from "next/server";
@@ -43,6 +43,8 @@ function fixture(id = "parent", overrides: Record<string, Property> = {}): Page 
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2024-02-01T17:00:00Z"));
   vi.clearAllMocks();
   clearCache();
   pages = new Map([["parent", fixture()]]);
@@ -71,6 +73,8 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => vi.useRealTimers());
+
 describe("task persistence and cache", () => {
   it("retrieves all pages and shares concurrent list reads", async () => {
     remote.databases.query.mockResolvedValueOnce({ results: [fixture("a")], has_more: true, next_cursor: "cursor-2" })
@@ -81,7 +85,7 @@ describe("task persistence and cache", () => {
     expect(remote.databases.query).toHaveBeenCalledTimes(2);
     expect(remote.databases.query.mock.calls[1][0]).toMatchObject({ start_cursor: "cursor-2" });
     await getTasks();
-    expect(remote.databases.query).toHaveBeenCalledTimes(2);
+    expect(remote.databases.query).toHaveBeenCalledTimes(3);
   });
 
   it("clears nullable fields, preserves zero, and persists deadline changes", async () => {
@@ -131,10 +135,14 @@ describe("task persistence and cache", () => {
     expect(await findWishlistTask("missing-idea")).toBeNull();
   });
 
-  it("supports fresh recovery reads even when a task list is cached", async () => {
+  it("sees writes from another server instance without local cache invalidation", async () => {
     await getTasks();
+    // Change the provider directly: the write occurred outside this process.
+    pages.get("parent")!.properties.Status = readableProperty({ status: { name: "Completed" } });
     pages.set("new", fixture("new"));
-    expect(await getTasks()).toHaveLength(1);
+    const refreshed = await getTasks();
+    expect(refreshed).toHaveLength(2);
+    expect(refreshed.find((task) => task.id === "parent")?.status).toBe("Completed");
     expect(await getTasks({ bypassCache: true })).toHaveLength(2);
   });
 });
@@ -143,7 +151,7 @@ describe("completion recovery", () => {
   it("saves current edits before creating one successor and preserves recurrence context", async () => {
     const result = await updateTaskWithRecurrence("parent", { status: "Completed", task: "Fresh mulch", notes: "Updated instructions", actualCost: 42, dateCompleted: { start: "2024-02-01" } });
     expect(result).toMatchObject({ task: "Fresh mulch", status: "Completed", actualCost: 42, dateCompleted: { start: "2024-02-01" }, nextOccurrencePending: false });
-    expect(result.nextOccurrence).toMatchObject({ task: "Fresh mulch", status: "Not Started", actualCost: null, dueDate: { start: "2024-02-29", end: "2024-03-02" }, notes: "Updated instructions", tags: ["Spring"], workMode: "DIY", isDeadline: true, costEstimate: 0, recurrenceAnchor: { start: "2024-01-31", end: "2024-02-02" } });
+    expect(result.nextOccurrence).toMatchObject({ task: "Fresh mulch", status: "Not Started", actualCost: null, dueDate: { start: "2024-02-29", end: "2024-03-02" }, notes: "Updated instructions", tags: ["Spring"], workMode: "DIY", isDeadline: true, costEstimate: 0, recurrenceAnchor: { start: "2024-01-31", end: "2024-02-02" }, recurrenceSource: "parent" });
     expect(remote.pages.update.mock.invocationCallOrder[0]).toBeLessThan(remote.pages.create.mock.invocationCallOrder[0]);
     await updateTaskWithRecurrence("parent", { status: "Completed", notes: "Edit after completion" });
     expect(remote.pages.create).toHaveBeenCalledTimes(1);
@@ -152,7 +160,7 @@ describe("completion recovery", () => {
   it("preserves month-end anchors when a full form resubmits an unchanged due date", async () => {
     const completed = await updateTaskWithRecurrence("parent", { status: "Completed" });
     const successor = completed.nextOccurrence!;
-    const result = await updateTaskWithRecurrence(successor.id, { status: "Completed", dueDate: successor.dueDate });
+    const result = await updateTaskWithRecurrence(successor.id, { status: "Completed", dueDate: successor.dueDate }, { confirmEarlyCompletion: true });
     expect(result.nextOccurrence?.dueDate).toEqual({ start: "2024-03-31", end: "2024-04-02" });
   });
 
@@ -210,8 +218,91 @@ describe("completion recovery", () => {
   });
 
   it("creates the successor using an edited completion date range and frequency", async () => {
-    const result = await updateTaskWithRecurrence("parent", { status: "Completed", frequency: "Annually", dueDate: { start: "2024-02-29", end: "2024-03-03" } });
+    const result = await updateTaskWithRecurrence("parent", { status: "Completed", frequency: "Annually", dueDate: { start: "2024-02-29", end: "2024-03-03" } }, { confirmEarlyCompletion: true });
     expect(result.nextOccurrence?.dueDate).toEqual({ start: "2025-02-28", end: "2025-03-03" });
+  });
+
+  it("skips missed annual periods when old maintenance is completed today", async () => {
+    vi.setSystemTime(new Date("2026-10-17T17:00:00Z"));
+    pages.set("parent", fixture("parent", { Frequency: { select: { name: "Annually" } }, "Due Date": { date: { start: "2024-04-15" } } }));
+    const result = await updateTaskWithRecurrence("parent", { status: "Completed" });
+    expect(result.dateCompleted?.start).toBe("2026-10-17");
+    expect(result.nextOccurrence).toMatchObject({ dueDate: { start: "2027-04-15" }, recurrenceAnchor: { start: "2024-04-15" } });
+    expect(remote.pages.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips missed monthly periods while preserving the original month-end anchor", async () => {
+    vi.setSystemTime(new Date("2024-05-15T17:00:00Z"));
+    const result = await updateTaskWithRecurrence("parent", { status: "Completed" });
+    expect(result.nextOccurrence).toMatchObject({ dueDate: { start: "2024-05-31", end: "2024-06-02" }, recurrenceAnchor: { start: "2024-01-31", end: "2024-02-02" } });
+  });
+
+  it("uses a deliberate historical completion day rather than today's date", async () => {
+    vi.setSystemTime(new Date("2026-10-17T17:00:00Z"));
+    const result = await updateTaskWithRecurrence("parent", { status: "Completed", dateCompleted: { start: "2024-02-01" } });
+    expect(result.nextOccurrence?.dueDate).toEqual({ start: "2024-02-29", end: "2024-03-02" });
+  });
+
+  it("keeps the saved completion day when scheduling is retried much later", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.setSystemTime(new Date("2026-10-17T17:00:00Z"));
+    pages.set("parent", fixture("parent", { Frequency: { select: { name: "Annually" } }, "Due Date": { date: { start: "2024-04-15" } } }));
+    remote.pages.create.mockRejectedValueOnce(new Error("Unavailable before write"));
+    await expect(updateTaskWithRecurrence("parent", { status: "Completed" })).rejects.toBeInstanceOf(RecurrencePendingError);
+    vi.setSystemTime(new Date("2027-10-17T17:00:00Z"));
+    const result = await updateTaskWithRecurrence("parent", { status: "Completed" });
+    expect(result.dateCompleted?.start).toBe("2026-10-17");
+    expect(result.nextOccurrence?.dueDate?.start).toBe("2027-04-15");
+  });
+});
+
+describe("future recurring completion safety", () => {
+  const future = { Frequency: { select: { name: "Annually" } }, "Due Date": { date: { start: "2090-04-15" } } };
+
+  it("rejects a future recurring completion without writing, including unmarked legacy copies", async () => {
+    pages.set("parent", fixture("parent", future));
+    await expect(updateTaskWithRecurrence("parent", { status: "Completed" })).rejects.toBeInstanceOf(EarlyRecurrenceCompletionError);
+    expect(remote.pages.update).not.toHaveBeenCalled();
+    expect(remote.pages.create).not.toHaveBeenCalled();
+  });
+
+  it("returns an actionable 409 and accepts one explicit early completion confirmation", async () => {
+    pages.set("parent", fixture("parent", future));
+    const request = (body: object) => new NextRequest("http://localhost/api/tasks/parent", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const blocked = await PATCH(request({ status: "Completed" }), { params: Promise.resolve({ id: "parent" }) });
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({ code: "EARLY_RECURRENCE_COMPLETION", plannedFor: "2090-04-15", task: { id: "parent", status: "Not Started" } });
+    expect(remote.pages.update).not.toHaveBeenCalled();
+    const confirmed = await PATCH(request({ status: "Completed", confirmEarlyCompletion: true }), { params: Promise.resolve({ id: "parent" }) });
+    expect(confirmed.status).toBe(200);
+    expect(await confirmed.json()).toMatchObject({ status: "Completed", nextOccurrence: { dueDate: { start: "2091-04-15" }, recurrenceSource: "parent" } });
+    for (const [args] of remote.pages.update.mock.calls) expect(args.properties).not.toHaveProperty("confirmEarlyCompletion");
+    expect(remote.pages.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks submitted date and frequency edits, while allowing future one-time work", async () => {
+    await expect(updateTaskWithRecurrence("parent", { status: "Completed", frequency: "Annually", dueDate: { start: "2090-04-15" } })).rejects.toBeInstanceOf(EarlyRecurrenceCompletionError);
+    expect(remote.pages.update).not.toHaveBeenCalled();
+    pages.set("parent", fixture("parent", { ...future, Frequency: { select: { name: "One-time" } } }));
+    expect(await updateTaskWithRecurrence("parent", { status: "Completed" })).toMatchObject({ status: "Completed" });
+    expect(remote.pages.create).not.toHaveBeenCalled();
+  });
+
+  it("allows deliberate rescheduling to a past date before completing", async () => {
+    pages.set("parent", fixture("parent", future));
+    const result = await updateTaskWithRecurrence("parent", { status: "Completed", dueDate: { start: "2024-01-15" } });
+    expect(result.nextOccurrence?.dueDate?.start).toBe("2025-01-15");
+  });
+
+  it("does not interrupt confirmed completion recovery or editing completed future history", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    pages.set("parent", fixture("parent", future));
+    lostCreateResponse = true;
+    await expect(updateTaskWithRecurrence("parent", { status: "Completed" }, { confirmEarlyCompletion: true })).rejects.toBeInstanceOf(RecurrencePendingError);
+    const retried = await updateTaskWithRecurrence("parent", { status: "Completed" });
+    expect(retried.nextOccurrence?.dueDate?.start).toBe("2091-04-15");
+    await updateTaskWithRecurrence("parent", { status: "Completed", notes: "Corrected history" });
+    expect(remote.pages.create).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -226,6 +317,11 @@ describe("task input validation", () => {
   });
   it("does not allow a cleared date to remain a firm deadline", () => {
     expect(validateTaskInput({ dueDate: null, isDeadline: true }, "update").input).toEqual({ dueDate: null, isDeadline: false });
+  });
+  it("keeps early-completion confirmation out of persisted task fields and requires a boolean", () => {
+    expect(validateTaskInput({ status: "Completed", confirmEarlyCompletion: true }, "update")).toEqual({ input: { status: "Completed" }, confirmEarlyCompletion: true });
+    expect(validateTaskInput({ status: "Completed", confirmEarlyCompletion: "true" }, "update").error).toBeTruthy();
+    expect(validateTaskInput({ confirmEarlyCompletion: true }, "update").error).toBe("No task changes supplied");
   });
 });
 

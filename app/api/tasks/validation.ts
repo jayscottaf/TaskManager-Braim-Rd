@@ -1,6 +1,6 @@
 import { AREAS, FREQUENCIES, PRIORITIES, STATUSES, TASK_TYPES, type CreateTaskInput, type UpdateTaskInput } from "@/lib/types";
 
-type Result<T> = { input: T; error?: never } | { input?: never; error: string };
+type Result<T> = { input: T; confirmEarlyCompletion?: boolean; error?: never } | { input?: never; error: string };
 
 function validDate(value: unknown): value is { start: string; end?: string } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -19,6 +19,9 @@ export function validateTaskInput(body: unknown, mode: "create" | "update"): Res
   if (!body || typeof body !== "object" || Array.isArray(body)) return { error: "Task details must be an object" };
   const source = body as Record<string, unknown>;
   const input: Record<string, unknown> = {};
+  if (mode === "update" && source.confirmEarlyCompletion !== undefined && typeof source.confirmEarlyCompletion !== "boolean") {
+    return { error: "Invalid early completion confirmation" };
+  }
   if (mode === "create" || source.task !== undefined) {
     if (typeof source.task !== "string" || !source.task.trim()) return { error: "Task name is required" };
     if (source.task.trim().length > 2000) return { error: "Task name is too long" };
@@ -63,5 +66,8 @@ export function validateTaskInput(body: unknown, mode: "create" | "update"): Res
   }
   if (input.dueDate === null) input.isDeadline = false;
   if (!Object.keys(input).length) return { error: "No task changes supplied" };
-  return { input: input as unknown as CreateTaskInput | UpdateTaskInput };
+  return {
+    input: input as unknown as CreateTaskInput | UpdateTaskInput,
+    ...(mode === "update" && source.confirmEarlyCompletion === true ? { confirmEarlyCompletion: true } : {}),
+  };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, Clock, Plus, X } from "lucide-react";
@@ -20,6 +20,8 @@ import {
   type HomePlan,
 } from "@/lib/home-plan";
 import { showToast } from "@/components/toast";
+import { completionNotice } from "@/lib/completion-notice";
+import { isUpcomingRepeat } from "@/lib/task-visibility";
 
 const TIME_PRESETS = [
   { label: "15 min", value: 15 },
@@ -38,11 +40,14 @@ export function StartMyDay({ tasks }: { tasks: Task[] }) {
   const [editingEstimate, setEditingEstimate] = useState<string | null>(null);
   const [estimateDraft, setEstimateDraft] = useState("");
   const [message, setMessage] = useState("");
+  const [schedulingPending, setSchedulingPending] = useState<string[]>([]);
+  const completing = useRef<string | null>(null);
+  const savedCompletions = useRef(new Set<string>());
 
   useEffect(() => {
     function restore() {
       const saved = readHomePlan();
-      const reconciled = reconcileHomePlan(saved, tasks);
+      const reconciled = reconcileHomePlan(saved, tasks.filter((task) => !isUpcomingRepeat(task)));
       setPlan(reconciled);
       setReady(true);
       if (reconciled !== saved) {
@@ -90,7 +95,8 @@ export function StartMyDay({ tasks }: { tasks: Task[] }) {
   }
 
   function addTask(task: Task) {
-    const next = addToHomePlan(plan, task.id);
+    const availablePlan = { ...plan, selectedIds: remainingTasks.map((selected) => selected.id) };
+    const next = addToHomePlan(availablePlan, task.id);
     if (next === plan) return;
     update(next);
     setMessage(`Added ${task.task} to your plan.`);
@@ -123,6 +129,8 @@ export function StartMyDay({ tasks }: { tasks: Task[] }) {
   }
 
   async function markDone(task: Task) {
+    if (completing.current || savedCompletions.current.has(task.id) || task.status === "Completed") return;
+    completing.current = task.id;
     setActing(task.id);
     try {
       const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
@@ -140,8 +148,12 @@ export function StartMyDay({ tasks }: { tasks: Task[] }) {
       const result = (await response.json().catch(() => null)) as {
         saved?: boolean;
         error?: string;
+        code?: string;
+        nextOccurrence?: Task;
       } | null;
       if (!response.ok && result?.saved) {
+        savedCompletions.current.add(task.id);
+        setSchedulingPending((ids) => [...new Set([...ids, task.id])]);
         setCompletedIds((ids) => [...ids, task.id]);
         const notice =
           result.error ||
@@ -151,10 +163,17 @@ export function StartMyDay({ tasks }: { tasks: Task[] }) {
         router.refresh();
         return;
       }
+      if (!response.ok && result?.code === "EARLY_RECURRENCE_COMPLETION") {
+        setMessage("This is a future repeat. Open the task to review it before completing it early.");
+        router.refresh();
+        return;
+      }
       if (!response.ok) throw new Error("Completion was not saved");
+      savedCompletions.current.add(task.id);
       setCompletedIds((ids) => [...ids, task.id]);
-      setMessage(`${task.task} completed.`);
-      showToast("Task completed", "success");
+      const notice = completionNotice(result?.nextOccurrence);
+      setMessage(`${task.task}: ${notice}`);
+      showToast(notice, "success");
       router.refresh();
     } catch {
       setMessage(
@@ -162,12 +181,13 @@ export function StartMyDay({ tasks }: { tasks: Task[] }) {
       );
       showToast("Could not save completion. Please try again.", "error");
     } finally {
+      completing.current = null;
       setActing(null);
     }
   }
 
   const selectedTasks = tasks.filter((task) =>
-    plan.selectedIds.includes(task.id),
+    plan.selectedIds.includes(task.id) && !isUpcomingRepeat(task),
   );
   const isDone = (task: Task) =>
     task.status === "Completed" || completedIds.includes(task.id);
@@ -178,7 +198,7 @@ export function StartMyDay({ tasks }: { tasks: Task[] }) {
   );
   const suggestions = planSuggestions(
     tasks.filter((task) => !completedIds.includes(task.id)),
-    plan,
+    { ...plan, selectedIds: remainingTasks.map((task) => task.id) },
   );
   const finished = selectedTasks.length > 0 && remainingTasks.length === 0;
   const overBudget = totalMinutes > plan.budgetMinutes;
@@ -343,7 +363,7 @@ export function StartMyDay({ tasks }: { tasks: Task[] }) {
             </div>
           )}
           <div className="mt-4 flex flex-col gap-3">
-            {selectedTasks.map((task) => (
+            {remainingTasks.map((task) => (
               <article
                 key={task.id}
                 className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800"
@@ -378,7 +398,7 @@ export function StartMyDay({ tasks }: { tasks: Task[] }) {
               </article>
             ))}
           </div>
-          {!finished && plan.selectedIds.length < MAX_PLAN_TASKS && (
+          {!finished && remainingTasks.length < MAX_PLAN_TASKS && (
             <div className="mt-6">
               <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
                 Suggestions that fit your time
@@ -425,12 +445,6 @@ export function StartMyDay({ tasks }: { tasks: Task[] }) {
               ))}
             </div>
           )}
-          <Link
-            href="/?list=all"
-            className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-blue-600 dark:text-blue-400"
-          >
-            Choose from all tasks →
-          </Link>
         </>
       )}
       <p
@@ -440,15 +454,20 @@ export function StartMyDay({ tasks }: { tasks: Task[] }) {
       >
         {message}
       </p>
+      {schedulingPending.map((id) => (
+        <Link key={id} href={`/task/${id}?returnTo=%2F`} className="inline-flex min-h-11 items-center text-sm font-medium text-blue-600 dark:text-blue-400">
+          Finish scheduling next repeat for {tasks.find((task) => task.id === id)?.task ?? "completed task"}
+        </Link>
+      ))}
     </section>
   );
 }
 
-/** Reconcile deleted picks even when the user stays in the full task list. */
+/** Free completed or future repeat picks before adding work from the task list. */
 export function HomePlanStorageSync({ tasks }: { tasks: Task[] }) {
   useEffect(() => {
     const saved = readHomePlan();
-    const reconciled = reconcileHomePlan(saved, tasks);
+    const reconciled = reconcileHomePlan(saved, tasks.filter((task) => task.status !== "Completed" && !isUpcomingRepeat(task)));
     if (reconciled !== saved) {
       try {
         saveHomePlan(reconciled);

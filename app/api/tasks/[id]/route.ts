@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTask, deleteTask, withTaskMutation } from "@/lib/notion";
 import { checkAuth } from "@/lib/auth";
-import { RecurrencePendingError, updateTaskWithRecurrence } from "../mutations";
+import { EarlyRecurrenceCompletionError, RecurrencePendingError, updateTaskWithRecurrence } from "../mutations";
 import { validateTaskInput } from "../validation";
 
 type Context = { params: Promise<{ id: string }> };
@@ -28,8 +28,9 @@ export async function PATCH(request: NextRequest, { params }: Context) {
   if (!validated.input) return NextResponse.json({ error: validated.error }, { status: 400 });
   try {
     const { id } = await params;
-    return NextResponse.json(await updateTaskWithRecurrence(id, validated.input));
+    return NextResponse.json(await updateTaskWithRecurrence(id, validated.input, { confirmEarlyCompletion: validated.confirmEarlyCompletion }));
   } catch (error) {
+    if (error instanceof EarlyRecurrenceCompletionError) return NextResponse.json({ error: error.message, code: "EARLY_RECURRENCE_COMPLETION", plannedFor: error.plannedFor, task: error.task }, { status: 409 });
     if (error instanceof RecurrencePendingError) return NextResponse.json({ error: error.message, saved: true, recurrencePending: true, task: error.task }, { status: 502 });
     console.error("PATCH /api/tasks/[id] error:", error);
     return NextResponse.json({ error: "Failed to update task" }, { status: 500 });

@@ -27,6 +27,20 @@ describe("calendar recurrence", () => {
     expect(nextOccurrenceDate({ ...first, dueDate: next, recurrenceAnchor: first.dueDate })).toEqual({ start: "2024-03-31", end: "2024-04-02" });
   });
 
+  it("skips missed annual periods beyond the saved completion day", () => {
+    expect(nextOccurrenceDate(task({ frequency: "Annually", dueDate: { start: "2024-04-15" } }), "2026-10-17")).toEqual({ start: "2027-04-15" });
+    expect(nextOccurrenceDate(task({ frequency: "Annually", dueDate: { start: "2024-04-15" } }), "2026-04-15")).toEqual({ start: "2027-04-15" });
+  });
+
+  it("skips missed months without losing month-end and range anchors", () => {
+    expect(nextOccurrenceDate(task(), "2024-05-15")).toEqual({ start: "2024-05-31", end: "2024-06-02" });
+    expect(nextOccurrenceDate(task(), "2024-05-31")).toEqual({ start: "2024-06-30", end: "2024-07-02" });
+  });
+
+  it("never moves backward when early completion precedes the planned occurrence", () => {
+    expect(nextOccurrenceDate(task({ frequency: "Annually", dueDate: { start: "2027-04-15" } }), "2026-10-17")).toEqual({ start: "2028-04-15" });
+  });
+
   it("advances each range endpoint for every virtual occurrence", () => {
     const dates = generateOccurrences(task(), "2024-02-01", "2024-05-31").map((item) => item.dueDate);
     expect(dates).toEqual([

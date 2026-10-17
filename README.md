@@ -22,6 +22,8 @@ Configure these existing deployment variables in a local `.env.local` when conne
 ## Planning and records
 
 - Dates are optional **Plan for** targets. Only the optional **Firm deadline** setting produces overdue warnings.
+- Unstarted optional repeats scheduled for later sit under **Upcoming repeats**. Past targets, ongoing work, and firm deadlines remain visible. Completing a future repeating occurrence requires a specific early-completion confirmation.
+- Completion removes the active card and explains the next repeat date. Late maintenance skips missed periods, keeping the original calendar anchor; deliberately entered historical completion dates retain their historical schedule. Saved completions awaiting recurrence recovery remain linked under **Repeats needing attention**.
 - Up to three tasks can be selected for a plan. Time preferences, selections, skipped suggestions, and duration overrides are stored on that browser/device, not synced across household devices.
 - Spending uses recorded actual costs. Undated costs remain visible but are excluded from period totals. Estimates and wishlist ideas are separate comparisons, never an automatic monthly reserve.
 - Photos are resized before transfer; one upload can also produce suggestions. Failed analysis retains the attachment and can be retried without another upload.
@@ -38,5 +40,7 @@ npm run build
 Tests use mocked external services. They cover input validation, failed saves, attachments, month-end recurrence, pagination/cache behavior, completion history, planner behavior, and wishlist promotion. They do not write to production Notion, Blob, or OpenAI.
 
 Recurrence and wishlist promotion keep a persisted source identity and retry intent to recover ordinary retries and lost responses. Requests for the same task are serialized within one server process. Notion does not provide a cross-instance unique constraint or transaction; strict exactly-once creation across simultaneous server instances is not guaranteed.
+
+Task lists deduplicate simultaneous reads but do not retain a process-local snapshot between requests. This prevents another Vercel instance from serving an old list after a task has changed. AI result caches remain separate.
 
 The service worker caches the static shell. Offline navigation shows an explicit offline page; it never substitutes HTML for API JSON or presents stale cached pages as newly saved work.

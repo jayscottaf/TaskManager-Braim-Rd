@@ -108,6 +108,7 @@ function pageToTask(page: PageObjectResponse): Task {
     dateCompleted: getDate(page, "Date Completed"),
     isDeadline: page.properties["Firm Deadline"]?.type === "checkbox" ? page.properties["Firm Deadline"].checkbox : false,
     recurrenceAnchor: getDate(page, "Recurrence Anchor"),
+    recurrenceSource: getText(page, "Recurrence Source"),
     nextOccurrencePending: page.properties["Next Occurrence Pending"]?.type === "checkbox" ? page.properties["Next Occurrence Pending"].checkbox : false,
     assignedTo: getPeople(page, "Assigned To"),
     contractorVendor: getText(page, "Contractor/Vendor"),
@@ -177,7 +178,10 @@ export async function getTasks(options?: GetTasksOptions): Promise<Task[]> {
     } while (cursor);
     return tasks;
   };
-  return options?.bypassCache ? load() : getOrLoadCached(tasksCacheKey(options), CACHE_TTL.TASK_LIST, load);
+  // A mutation may run in another serverless instance. A process-local TTL would
+  // keep completed tasks visible there even after router.refresh(). Only share
+  // concurrent reads; every subsequent request checks the source of truth.
+  return options?.bypassCache ? load() : getOrLoadCached(tasksCacheKey(options), 0, load);
 }
 
 export async function getTask(id: string, options?: { bypassCache?: boolean }): Promise<Task> {
