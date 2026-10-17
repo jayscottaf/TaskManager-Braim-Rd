@@ -12,7 +12,6 @@ export interface FeatureTemplate {
   description: string;
   icon: string;
   category: "Tracking" | "Directory" | "Inventory";
-  popularity: number; // TODO: replace with real tracking
   schema: FieldDefinition[];
 }
 
@@ -23,7 +22,6 @@ export const FEATURE_TEMPLATES: FeatureTemplate[] = [
     description: "Track paint brands, colors, codes, and which rooms they were used in.",
     icon: "Paintbrush",
     category: "Tracking",
-    popularity: 1247,
     schema: [
       { name: "Brand", type: "text", placeholder: "e.g., Behr, Benjamin Moore" },
       { name: "Color Name", type: "text", placeholder: "e.g., Sorus, Simply White" },
@@ -46,7 +44,6 @@ export const FEATURE_TEMPLATES: FeatureTemplate[] = [
     description: "Catalog all appliances with make, model, serial numbers, and warranty dates.",
     icon: "Refrigerator",
     category: "Inventory",
-    popularity: 2831,
     schema: [
       { name: "Appliance", type: "text", placeholder: "e.g., Dishwasher" },
       { name: "Make", type: "text", placeholder: "e.g., Bosch" },
@@ -65,7 +62,6 @@ export const FEATURE_TEMPLATES: FeatureTemplate[] = [
     description: "Keep a directory of contractors, vendors, and service providers with contact info and ratings.",
     icon: "HardHat",
     category: "Directory",
-    popularity: 1893,
     schema: [
       { name: "Name", type: "text", placeholder: "e.g., Joe's Plumbing" },
       { name: "Phone", type: "text", placeholder: "e.g., (518) 555-1234" },
@@ -82,7 +78,6 @@ export const FEATURE_TEMPLATES: FeatureTemplate[] = [
     description: "Never miss a warranty expiration. Track coverage details and claim history.",
     icon: "ShieldCheck",
     category: "Tracking",
-    popularity: 956,
     schema: [
       { name: "Item", type: "text", placeholder: "e.g., Roof, HVAC System" },
       { name: "Provider", type: "text", placeholder: "e.g., Home Depot, Manufacturer" },
@@ -100,7 +95,6 @@ export const FEATURE_TEMPLATES: FeatureTemplate[] = [
     description: "Document everything you own for insurance purposes with photos and values.",
     icon: "Package",
     category: "Inventory",
-    popularity: 1534,
     schema: [
       { name: "Item", type: "text", placeholder: "e.g., Samsung 65\" TV" },
       { name: "Category", type: "select", options: ["Electronics", "Furniture", "Appliances", "Tools", "Jewelry", "Art", "Clothing", "Sports", "Other"] },
@@ -118,7 +112,6 @@ export const FEATURE_TEMPLATES: FeatureTemplate[] = [
     description: "Track who has keys, codes, and access to your property.",
     icon: "Key",
     category: "Tracking",
-    popularity: 672,
     schema: [
       { name: "Item", type: "text", placeholder: "e.g., Front Door Key, Garage Code" },
       { name: "Type", type: "select", options: ["Physical Key", "Code/PIN", "Smart Lock", "Gate Remote", "Lockbox"] },
@@ -139,5 +132,5 @@ export function getTemplatesByCategory(category?: string): FeatureTemplate[] {
   const templates = category
     ? FEATURE_TEMPLATES.filter((t) => t.category === category)
     : FEATURE_TEMPLATES;
-  return templates.sort((a, b) => b.popularity - a.popularity);
+  return templates.sort((a, b) => a.name.localeCompare(b.name));
 }

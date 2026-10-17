@@ -4,8 +4,8 @@
   "description": "Home maintenance tracker for Braim Rd, Saratoga Springs",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#111827",
+  "background_color": "#181b1a",
+  "theme_color": "#181b1a",
   "orientation": "portrait-primary",
   "icons": [
     {

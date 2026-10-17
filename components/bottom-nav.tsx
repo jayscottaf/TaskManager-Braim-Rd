@@ -1,68 +1,61 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ClipboardList, Calendar, Plus, Heart, Sparkles, Store, DollarSign } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useCallback, useRef, useState } from "react";
+import { House, ClipboardList, Plus, DollarSign, Ellipsis, Calendar, Heart, Archive, Wrench, CheckCircle, Printer, Sparkles, X } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { useModalFocus } from "@/components/use-modal-focus";
 
-const NAV_ITEMS = [
-  { href: "/", label: "Tasks", icon: ClipboardList, accent: false, action: null },
-  { href: "/calendar", label: "Calendar", icon: Calendar, accent: false, action: null },
-  { href: "/spending", label: "Spend", icon: DollarSign, accent: false, action: null },
-  { href: "/add", label: "Add", icon: Plus, accent: true, action: null },
-  { href: "/wishlist", label: "Wish List", icon: Heart, accent: false, action: null },
-  { href: "#", label: "AI", icon: Sparkles, accent: false, action: "open-ai" },
-  { href: "/store", label: "Store", icon: Store, accent: false, action: null },
-] as const;
+const MORE_LINKS = [
+  { href: "/calendar", label: "Calendar", icon: Calendar },
+  { href: "/wishlist", label: "Wish list", icon: Heart },
+  { href: "/store", label: "Home records", icon: Archive },
+  { href: "/contractors", label: "Contractors", icon: Wrench },
+  { href: "/done", label: "Completed work", icon: CheckCircle },
+  { href: "/checklist", label: "Print checklist", icon: Printer },
+];
 
 export function BottomNav() {
   const pathname = usePathname();
-
+  const params = useSearchParams();
+  const allTasksView = ["list", "q", "status", "priority", "area", "range", "tag", "workMode", "view"].some((key) => Boolean(params.get(key)));
+  const [open, setOpen] = useState(false);
+  const panel = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useModalFocus(open, panel, close);
+  const current = `${pathname}${params.size ? `?${params.toString()}` : ""}`;
+  const items = [
+    { href: "/", label: "Your plan", icon: House, active: pathname === "/" && !allTasksView },
+    { href: "/?list=all", label: "Tasks", icon: ClipboardList, active: pathname === "/" && allTasksView },
+    { href: pathname === "/add" ? "/add" : `/add?returnTo=${encodeURIComponent(current)}`, label: "Add task", icon: Plus, active: pathname === "/add" },
+    { href: "/spending", label: "Costs", icon: DollarSign, active: pathname === "/spending" },
+  ];
   return (
-    <nav className="fixed bottom-0 inset-x-0 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-lg shadow-[0_-1px_3px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)] z-50">
-      <div className="flex items-center h-16 max-w-lg mx-auto px-1">
-        {NAV_ITEMS.map(({ href, label, icon: Icon, accent, action }) => {
-          const isActive = !action && (href === "/" ? pathname === "/" : pathname.startsWith(href));
-
-          if (accent) {
-            return (
-              <Link
-                key={label}
-                href={href}
-                className="flex items-center justify-center w-12 h-12 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/25 -mt-4 active:scale-95 transition-transform"
-                aria-label="Add task"
-              >
-                <Icon className="w-6 h-6" />
-              </Link>
-            );
-          }
-
-          if (action) {
-            return (
-              <button
-                key={label}
-                onClick={() => window.dispatchEvent(new CustomEvent(action))}
-                className="flex flex-col items-center gap-0.5 flex-1 min-w-0 py-1 transition-colors text-neutral-400 hover:text-blue-600"
-              >
-                <Icon className="w-5 h-5" />
-                <span className="text-[10px] font-medium leading-none truncate max-w-full">{label}</span>
-              </button>
-            );
-          }
-
-          return (
-            <Link
-              key={label}
-              href={href}
-              className={`flex flex-col items-center gap-0.5 flex-1 min-w-0 py-1 transition-colors ${
-                isActive ? "text-blue-600" : "text-neutral-400"
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-              <span className="text-[10px] font-medium leading-none truncate max-w-full">{label}</span>
+    <>
+      <nav aria-label="Main navigation" className="fixed bottom-0 inset-x-0 z-50 border-t border-line bg-surface/95 backdrop-blur-lg pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-auto flex h-16 max-w-lg items-center px-2">
+          {items.map(({ href, label, icon: Icon, active }) => (
+            <Link key={label} href={href} onClick={close} aria-label={label} aria-current={active ? "page" : undefined}
+              className={`flex min-h-12 flex-1 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium ${active ? "text-accent" : "text-muted"}`}>
+              {label === "Add task" ? <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-on-accent"><Icon className="h-6 w-6" /></span> : <><Icon className="h-5 w-5" /><span>{label}</span></>}
             </Link>
-          );
-        })}
-      </div>
-    </nav>
+          ))}
+          <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open}
+            className={`flex min-h-12 flex-1 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium ${open || MORE_LINKS.some((link) => pathname.startsWith(link.href)) ? "text-accent" : "text-muted"}`}>
+            <Ellipsis className="h-5 w-5" /><span>More</span>
+          </button>
+        </div>
+      </nav>
+      {open && <div className="fixed inset-0 z-[70] flex items-end bg-black/50" onClick={close}>
+        <div ref={panel} role="dialog" aria-modal="true" aria-labelledby="more-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}
+          className="max-h-[85dvh] w-full overflow-y-auto rounded-t-3xl border border-line bg-surface px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4">
+          <div className="mb-3 flex items-center justify-between"><h2 id="more-title" className="text-lg font-semibold">Around your home</h2><button type="button" onClick={close} aria-label="Close menu" className="flex h-11 w-11 items-center justify-center rounded-xl text-muted"><X className="h-5 w-5" /></button></div>
+          {MORE_LINKS.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={close} className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800"><Icon className="h-5 w-5 text-muted" />{label}</Link>)}
+          <button type="button" onClick={() => { close(); window.dispatchEvent(new CustomEvent("open-ai")); }} className="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800"><Sparkles className="h-5 w-5 text-muted" />Maintenance ideas</button>
+          <div className="mt-3 flex items-center justify-between border-t border-line px-3 pt-3"><span className="text-sm text-muted">Appearance</span><ThemeToggle /></div>
+        </div>
+      </div>}
+    </>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   startOfMonth,
   endOfMonth,
@@ -10,416 +11,366 @@ import {
   format,
   isSameMonth,
   isSameDay,
-  isWithinInterval,
   addMonths,
-  subMonths,
   addWeeks,
-  subWeeks,
   addDays,
-  isPast,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, Repeat, CalendarDays, CalendarRange, List } from "lucide-react";
-import type { Task, Priority } from "@/lib/types";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Repeat,
+  CalendarDays,
+  CalendarRange,
+  List,
+} from "lucide-react";
+import type { Task } from "@/lib/types";
 import { generateOccurrences } from "@/lib/recurrence";
+import { isOverdueDeadline } from "@/lib/home-plan";
+import { calendarDateKey, householdCalendarNow } from "@/lib/household-date";
+import { calendarDay, tasksOnCalendarDay } from "@/lib/calendar-state";
 import Link from "next/link";
 
-const PRIORITY_COLORS: Record<Priority, { bg: string; border: string; text: string }> = {
-  High: { bg: "bg-red-50 dark:bg-red-950/40", border: "border-l-red-500", text: "text-red-900 dark:text-red-300" },
-  Medium: { bg: "bg-yellow-50 dark:bg-yellow-950/40", border: "border-l-yellow-500", text: "text-yellow-900 dark:text-yellow-300" },
-  Low: { bg: "bg-green-50 dark:bg-green-950/40", border: "border-l-green-500", text: "text-green-900 dark:text-green-300" },
-};
-
-const DEFAULT_COLORS = { bg: "bg-gray-50 dark:bg-neutral-800", border: "border-l-gray-400", text: "text-gray-700 dark:text-neutral-300" };
-
-const STATUS_STYLES: Record<string, string> = {
-  Completed: "line-through opacity-50",
-  "On Hold": "opacity-60 italic",
-};
-
-function isVirtual(task: Task): boolean {
+type ViewMode = "month" | "week" | "agenda";
+function isVirtual(task: Task) {
   return task.id.includes("_recur_");
 }
-
-function realId(task: Task): string {
+function realId(task: Task) {
   return task.id.split("_recur_")[0];
 }
 
-function TaskPill({ task }: { task: Task }) {
-  const colors = task.priority ? PRIORITY_COLORS[task.priority] : DEFAULT_COLORS;
-  const statusStyle = STATUS_STYLES[task.status] || "";
+function TaskPill({
+  task,
+  returnTo,
+  compact = false,
+}: {
+  task: Task;
+  returnTo: string;
+  compact?: boolean;
+}) {
   const virtual = isVirtual(task);
-
+  const overdue = !virtual && isOverdueDeadline(task);
   return (
     <Link
-      href={`/task/${realId(task)}`}
-      className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] leading-tight border-l-2 ${colors.bg} ${colors.border} ${colors.text} ${statusStyle} ${virtual ? "border-dashed" : ""} hover:brightness-95 transition-all`}
+      href={`/task/${realId(task)}?returnTo=${encodeURIComponent(returnTo)}`}
+      aria-label={`${task.task}${virtual ? ", projected recurrence; opens original task" : ""}`}
+      className={`flex min-h-11 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm leading-relaxed ${overdue ? "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400" : "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"} ${task.status === "Completed" ? "line-through" : ""}`}
     >
-      {virtual && <Repeat className="w-2.5 h-2.5 flex-shrink-0 opacity-50" />}
-      <span className="truncate">{task.task}</span>
+      {virtual && <Repeat className="h-3.5 w-3.5 shrink-0" />}
+      <span
+        className={`min-w-0 flex-1 ${compact ? "truncate text-xs" : "break-words"}`}
+      >
+        {task.task}
+        {virtual && (
+          <span className="ml-1 text-xs text-neutral-500 dark:text-neutral-400">
+            · Projected
+          </span>
+        )}
+      </span>
+      {overdue && !compact && (
+        <span className="text-xs font-medium">Deadline passed</span>
+      )}
     </Link>
   );
 }
 
-function MobileTaskDot({ task }: { task: Task }) {
-  const dotColor = task.priority
-    ? { High: "bg-red-500", Medium: "bg-yellow-500", Low: "bg-green-500" }[task.priority]
-    : "bg-gray-400";
-  return (
-    <span
-      className={`w-1.5 h-1.5 rounded-full ${dotColor} ${task.status === "Completed" ? "opacity-40" : ""}`}
-    />
-  );
-}
-
-type ViewMode = "month" | "week" | "agenda";
-
 export function CalendarView({ tasks }: { tasks: Task[] }) {
-  const [viewMode, setViewMode] = useState<ViewMode>("month");
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date()));
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(currentMonth);
-  const calStart = viewMode === "week" ? currentWeekStart : viewMode === "agenda" ? new Date() : startOfWeek(monthStart);
-  const calEnd = viewMode === "week" ? endOfWeek(currentWeekStart) : viewMode === "agenda" ? addDays(new Date(), 13) : endOfWeek(monthEnd);
+  const params = useSearchParams();
+  const today = householdCalendarNow();
+  const viewMode: ViewMode =
+    params.get("view") === "week"
+      ? "week"
+      : params.get("view") === "agenda"
+        ? "agenda"
+        : "month";
+  const anchor = calendarDay(params.get("date")) ?? today;
+  const selectedDate = calendarDay(params.get("selected"));
+  const calStart =
+    viewMode === "week"
+      ? startOfWeek(anchor)
+      : viewMode === "agenda"
+        ? anchor
+        : startOfWeek(startOfMonth(anchor));
+  const calEnd =
+    viewMode === "week"
+      ? endOfWeek(anchor)
+      : viewMode === "agenda"
+        ? addDays(anchor, 13)
+        : endOfWeek(endOfMonth(anchor));
   const days = eachDayOfInterval({ start: calStart, end: calEnd });
-
   const allTasks = useMemo(() => {
-    const rangeStart = format(calStart, "yyyy-MM-dd");
-    const rangeEnd = format(calEnd, "yyyy-MM-dd");
-    const virtualTasks = tasks.flatMap((t) =>
-      generateOccurrences(t, rangeStart, rangeEnd)
-    );
-    return [...tasks, ...virtualTasks];
-  }, [tasks, calStart, calEnd]);
-
-  function getTasksForDay(day: Date): Task[] {
-    return allTasks.filter((t) => {
-      if (!t.dueDate || !t.dueDate.start) return false;
-      const start = new Date(t.dueDate.start + "T00:00:00");
-      if (t.dueDate.end) {
-        const end = new Date(t.dueDate.end + "T00:00:00");
-        return isWithinInterval(day, { start, end });
-      }
-      return isSameDay(day, start);
-    });
-  }
-
-  const selectedTasks = useMemo(
-    () => (selectedDate ? getTasksForDay(selectedDate) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedDate, allTasks]
+    const date = calendarDay(params.get("date")) ?? householdCalendarNow();
+    const start =
+      viewMode === "week"
+        ? startOfWeek(date)
+        : viewMode === "agenda"
+          ? date
+          : startOfWeek(startOfMonth(date));
+    const end =
+      viewMode === "week"
+        ? endOfWeek(date)
+        : viewMode === "agenda"
+          ? addDays(date, 13)
+          : endOfWeek(endOfMonth(date));
+    return [
+      ...tasks,
+      ...tasks.flatMap((task) =>
+        generateOccurrences(task, calendarDateKey(start), calendarDateKey(end)),
+      ),
+    ];
+  }, [tasks, params, viewMode]);
+  const tasksByDay = new Map(
+    days.map((day) => [
+      calendarDateKey(day),
+      tasksOnCalendarDay(allTasks, calendarDateKey(day)),
+    ]),
   );
+  const selectedTasks = selectedDate
+    ? tasksOnCalendarDay(allTasks, calendarDateKey(selectedDate))
+    : [];
+  const returnParams = new URLSearchParams(params.toString());
+  returnParams.set("view", viewMode);
+  returnParams.set("date", calendarDateKey(anchor));
+  const returnTo = `/calendar?${returnParams.toString()}`;
 
-  const today = new Date();
-
-  function navigateBack() {
-    if (viewMode === "week") setCurrentWeekStart(subWeeks(currentWeekStart, 1));
-    else setCurrentMonth(subMonths(currentMonth, 1));
+  function update(values: Record<string, string | null>) {
+    const next = new URLSearchParams(params.toString());
+    next.set("date", calendarDateKey(anchor));
+    for (const [key, value] of Object.entries(values)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    // Native history integrates with Next search params without fetching tasks again.
+    window.history.replaceState(null, "", `/calendar?${next.toString()}`);
   }
-  function navigateForward() {
-    if (viewMode === "week") setCurrentWeekStart(addWeeks(currentWeekStart, 1));
-    else setCurrentMonth(addMonths(currentMonth, 1));
+  function navigate(direction: -1 | 1) {
+    const next =
+      viewMode === "month"
+        ? addMonths(anchor, direction)
+        : viewMode === "week"
+          ? addWeeks(anchor, direction)
+          : addDays(anchor, direction * 14);
+    update({ date: calendarDateKey(next), selected: null });
   }
-  function navigateToday() {
-    setCurrentMonth(new Date());
-    setCurrentWeekStart(startOfWeek(new Date()));
+  function addHref(day: Date) {
+    const back = new URLSearchParams(returnParams.toString());
+    back.set("selected", calendarDateKey(day));
+    return `/add?dueDate=${calendarDateKey(day)}&returnTo=${encodeURIComponent(`/calendar?${back.toString()}`)}`;
   }
-
-  const navTitle = viewMode === "week"
-    ? `${format(currentWeekStart, "MMM d")} – ${format(endOfWeek(currentWeekStart), "MMM d, yyyy")}`
-    : format(currentMonth, "MMMM yyyy");
-
-  const showTodayBtn = viewMode === "week"
-    ? !isSameDay(currentWeekStart, startOfWeek(new Date()))
-    : !isSameMonth(currentMonth, today);
+  const navTitle =
+    viewMode === "month"
+      ? format(anchor, "MMMM yyyy")
+      : `${format(calStart, "MMM d")} – ${format(calEnd, "MMM d, yyyy")}`;
+  const views = [
+    { mode: "month" as const, icon: CalendarDays, label: "Month" },
+    { mode: "week" as const, icon: CalendarRange, label: "Week" },
+    { mode: "agenda" as const, icon: List, label: "Agenda" },
+  ];
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* View toggle */}
-      <div className="flex items-center justify-center gap-1 px-4">
-        {([
-          { mode: "month" as ViewMode, icon: CalendarDays, label: "Month" },
-          { mode: "week" as ViewMode, icon: CalendarRange, label: "Week" },
-          { mode: "agenda" as ViewMode, icon: List, label: "Agenda" },
-        ]).map(({ mode, icon: Icon, label }) => (
+    <div className="flex flex-col gap-4 px-3 sm:px-5">
+      <div
+        role="group"
+        aria-label="Calendar view"
+        className="flex flex-wrap justify-center gap-1"
+      >
+        {views.map(({ mode, icon: Icon, label }) => (
           <button
+            type="button"
             key={mode}
-            onClick={() => setViewMode(mode)}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              viewMode === mode
-                ? "bg-blue-600 text-white"
-                : "text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            }`}
+            aria-pressed={viewMode === mode}
+            onClick={() => update({ view: mode, selected: null })}
+            className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-4 text-sm font-medium ${viewMode === mode ? "bg-blue-600 text-white" : "text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"}`}
           >
-            <Icon className="w-3.5 h-3.5" />
+            <Icon className="h-4 w-4" />
             {label}
           </button>
         ))}
       </div>
-
-      {/* Navigation (month & week only) */}
-      {viewMode !== "agenda" && (
-        <div className="flex items-center justify-between px-4">
-          <button onClick={navigateBack} className="p-2 rounded-full active:bg-gray-100 dark:active:bg-neutral-800">
-            <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-neutral-400" />
-          </button>
-          <div className="flex items-center gap-3">
-            <h2 className="font-semibold text-gray-900 dark:text-neutral-50">{navTitle}</h2>
-            {showTodayBtn && (
-              <button
-                onClick={navigateToday}
-                className="text-xs text-blue-600 dark:text-blue-400 font-medium px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-950/30"
-              >
-                Today
-              </button>
-            )}
-          </div>
-          <button onClick={navigateForward} className="p-2 rounded-full active:bg-gray-100 dark:active:bg-neutral-800">
-            <ChevronRight className="w-5 h-5 text-gray-600 dark:text-neutral-400" />
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          aria-label={`Previous ${viewMode === "agenda" ? "14 days" : viewMode}`}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <div className="text-center">
+          <h2
+            aria-live="polite"
+            className="text-sm font-semibold text-neutral-900 dark:text-neutral-100"
+          >
+            {navTitle}
+          </h2>
+          <button
+            type="button"
+            onClick={() =>
+              update({
+                date: calendarDateKey(today),
+                selected: calendarDateKey(today),
+              })
+            }
+            className="min-h-11 px-3 text-sm font-medium text-blue-600 dark:text-blue-400"
+          >
+            Today
           </button>
         </div>
-      )}
-
-      {/* Agenda view */}
-      {viewMode === "agenda" && (
-        <div className="px-4">
-          <h2 className="font-semibold text-gray-900 dark:text-neutral-50 mb-3">Next 14 days</h2>
-          <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={() => navigate(1)}
+          aria-label={`Next ${viewMode === "agenda" ? "14 days" : viewMode}`}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+      </div>
+      {viewMode === "month" ? (
+        <>
+          <div className="grid grid-cols-7 text-center">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+              <span
+                key={day}
+                className="py-2 text-xs font-medium text-neutral-500 dark:text-neutral-400"
+              >
+                {day}
+              </span>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-neutral-200 bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-700">
             {days.map((day) => {
-              const dayTasks = getTasksForDay(day);
-              const isToday2 = isSameDay(day, today);
+              const dayKey = calendarDateKey(day);
+              const dayTasks = tasksByDay.get(dayKey) ?? [];
+              const selected = Boolean(
+                selectedDate && isSameDay(day, selectedDate),
+              );
+              const isToday = isSameDay(day, today);
               return (
-                <div key={day.toISOString()}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-xs font-semibold ${isToday2 ? "text-blue-600 dark:text-blue-400" : "text-neutral-500 dark:text-neutral-400"}`}>
-                      {format(day, "EEE, MMM d")}
-                      {isToday2 && " · Today"}
+                <div
+                  key={dayKey}
+                  className={`min-w-0 bg-white p-0.5 dark:bg-neutral-900 ${selected ? "ring-2 ring-inset ring-blue-500" : ""}`}
+                >
+                  <button
+                    type="button"
+                    aria-pressed={selected}
+                    aria-current={isToday ? "date" : undefined}
+                    aria-label={`${format(day, "EEEE, MMMM d, yyyy")}, ${dayTasks.length} task${dayTasks.length === 1 ? "" : "s"}`}
+                    onClick={() =>
+                      update({ selected: selected ? null : dayKey })
+                    }
+                    className="flex min-h-20 w-full flex-col items-center justify-between rounded-lg px-1 py-2 sm:min-h-11 sm:flex-row"
+                  >
+                    <span
+                      className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium ${isToday ? "bg-blue-600 text-white" : isSameMonth(day, anchor) ? "text-neutral-700 dark:text-neutral-200" : "text-neutral-500 dark:text-neutral-400"}`}
+                    >
+                      {format(day, "d")}
                     </span>
-                    {dayTasks.length === 0 && <span className="text-xs text-neutral-300 dark:text-neutral-600">—</span>}
+                    <span className="flex flex-wrap justify-center gap-1 sm:hidden">
+                      {dayTasks.slice(0, 4).map((task) => (
+                        <span
+                          key={task.id}
+                          className={`h-1.5 w-1.5 rounded-full ${!isVirtual(task) && isOverdueDeadline(task) ? "bg-red-500" : "bg-neutral-500"}`}
+                        />
+                      ))}
+                    </span>
+                  </button>
+                  <div className="hidden flex-col gap-1 pb-1 sm:flex">
+                    {dayTasks.slice(0, 2).map((task) => (
+                      <TaskPill
+                        key={task.id}
+                        task={task}
+                        returnTo={returnTo}
+                        compact
+                      />
+                    ))}
+                    {dayTasks.length > 2 && (
+                      <button
+                        type="button"
+                        onClick={() => update({ selected: dayKey })}
+                        aria-label={`Show all ${dayTasks.length} tasks for ${format(day, "MMMM d")}`}
+                        className="min-h-11 px-2 text-left text-xs text-neutral-500 dark:text-neutral-400"
+                      >
+                        +{dayTasks.length - 2} more
+                      </button>
+                    )}
                   </div>
-                  {dayTasks.length > 0 && (
-                    <div className="flex flex-col gap-1 ml-2 mb-2">
-                      {dayTasks.map((t) => {
-                        const colors = t.priority ? PRIORITY_COLORS[t.priority] : DEFAULT_COLORS;
-                        return (
-                          <Link
-                            key={t.id}
-                            href={`/task/${realId(t)}`}
-                            className={`flex items-center gap-2 p-2 rounded-lg border-l-2 ${colors.border} ${colors.bg} text-sm hover:brightness-95 transition-all`}
-                          >
-                            {isVirtual(t) && <Repeat className="w-3 h-3 opacity-50 flex-shrink-0" />}
-                            <span className={`flex-1 truncate ${colors.text} ${STATUS_STYLES[t.status] || ""}`}>{t.task}</span>
-                            {t.costEstimate != null && <span className="text-xs text-neutral-400 flex-shrink-0">${t.costEstimate}</span>}
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
-
-      {/* Week view */}
-      {viewMode === "week" && (
-        <div className="px-2 flex flex-col gap-2">
-          {days.map((day) => {
-            const dayTasks = getTasksForDay(day);
-            const isToday2 = isSameDay(day, today);
-            const isSelected = selectedDate && isSameDay(day, selectedDate);
-            return (
-              <div
-                key={day.toISOString()}
-                className={`bg-white dark:bg-neutral-900 rounded-lg p-3 border transition-colors ${
-                  isSelected ? "border-blue-500 ring-1 ring-blue-500" : "border-neutral-200 dark:border-neutral-800"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-sm font-semibold ${isToday2 ? "text-blue-600 dark:text-blue-400" : "text-neutral-700 dark:text-neutral-200"}`}>
-                    {format(day, "EEEE, MMM d")}
-                  </span>
-                  <span className="text-xs text-neutral-400">{dayTasks.length > 0 ? `${dayTasks.length} task${dayTasks.length > 1 ? "s" : ""}` : ""}</span>
-                </div>
-                {dayTasks.length > 0 ? (
-                  <div className="flex flex-col gap-1">
-                    {dayTasks.map((t) => <TaskPill key={t.id} task={t} />)}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-neutral-400 dark:text-neutral-500">No tasks</p>
-                    <Link
-                      href={`/add?dueDate=${format(day, "yyyy-MM-dd")}`}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-600 text-white text-[10px] font-medium hover:bg-blue-700 transition-all"
-                    >
-                      <Plus className="w-3 h-3" /> Add
-                    </Link>
-                  </div>
+          {selectedDate && (
+            <section
+              aria-label={`Tasks for ${format(selectedDate, "MMMM d")}`}
+              className="mt-2 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+            >
+              <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                {format(selectedDate, "EEEE, MMMM d")}
+              </h3>
+              <div className="mt-3 flex flex-col gap-2">
+                {selectedTasks.map((task) => (
+                  <TaskPill key={task.id} task={task} returnTo={returnTo} />
+                ))}
+                {selectedTasks.length === 0 && (
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                    Nothing planned for this day.
+                  </p>
                 )}
               </div>
+              <Link
+                href={addHref(selectedDate)}
+                className="mt-3 inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-blue-600 dark:text-blue-400"
+              >
+                <Plus className="h-4 w-4" />
+                Plan a task
+              </Link>
+            </section>
+          )}
+        </>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {days.map((day) => {
+            const dayKey = calendarDateKey(day);
+            const dayTasks = tasksByDay.get(dayKey) ?? [];
+            return (
+              <section
+                key={dayKey}
+                className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <h3
+                    className={`text-sm font-semibold ${isSameDay(day, today) ? "text-blue-600 dark:text-blue-400" : "text-neutral-700 dark:text-neutral-200"}`}
+                  >
+                    {format(day, "EEEE, MMM d")}
+                    {isSameDay(day, today) ? " · Today" : ""}
+                  </h3>
+                  <Link
+                    href={addHref(day)}
+                    aria-label={`Plan a task for ${format(day, "MMMM d")}`}
+                    className="inline-flex min-h-11 items-center gap-1 px-2 text-sm text-blue-600 dark:text-blue-400"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add
+                  </Link>
+                </div>
+                <div className="mt-2 flex flex-col gap-2">
+                  {dayTasks.map((task) => (
+                    <TaskPill key={task.id} task={task} returnTo={returnTo} />
+                  ))}
+                  {dayTasks.length === 0 && (
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      Nothing planned.
+                    </p>
+                  )}
+                </div>
+              </section>
             );
           })}
         </div>
       )}
-
-      {/* Month view */}
-      {viewMode === "month" && <>
-      <div className="grid grid-cols-7 text-center px-2">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-          <div key={d} className="text-xs font-medium text-gray-400 py-1">
-            {d}
-          </div>
-        ))}
-      </div>
-
-      {/* Calendar grid — desktop shows task pills, mobile shows dots */}
-      <div className="grid grid-cols-7 px-2 gap-px bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
-        {days.map((day) => {
-          const dayTasks = getTasksForDay(day);
-          const isInMonth = isSameMonth(day, currentMonth);
-          const isToday = isSameDay(day, today);
-          const isSelected = selectedDate && isSameDay(day, selectedDate);
-          const hasOverdue = dayTasks.some(
-            (t) =>
-              t.status !== "Completed" &&
-              t.dueDate &&
-              t.dueDate.start &&
-              isPast(new Date(t.dueDate.start + "T00:00:00")) &&
-              t.dueDate.start < format(today, "yyyy-MM-dd")
-          );
-
-          return (
-            <button
-              key={day.toISOString()}
-              onClick={() =>
-                setSelectedDate(
-                  selectedDate && isSameDay(day, selectedDate) ? null : day
-                )
-              }
-              className={`flex flex-col min-h-[80px] sm:min-h-[100px] p-1 bg-white dark:bg-neutral-900 transition-colors text-left ${
-                isSelected
-                  ? "ring-2 ring-inset ring-blue-500 bg-blue-50/30 dark:bg-blue-950/30"
-                  : ""
-              } ${!isInMonth ? "bg-neutral-50/50 dark:bg-neutral-950/50" : ""}`}
-            >
-              {/* Day number */}
-              <span
-                className={`text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full mb-0.5 ${
-                  isToday
-                    ? "bg-blue-600 text-white"
-                    : isInMonth
-                      ? "text-gray-700 dark:text-neutral-200"
-                      : "text-gray-300 dark:text-neutral-600"
-                }`}
-              >
-                {format(day, "d")}
-              </span>
-
-              {/* Desktop: task pills */}
-              <div className="hidden sm:flex flex-col gap-0.5 w-full overflow-hidden flex-1">
-                {dayTasks.slice(0, 3).map((t) => (
-                  <TaskPill key={t.id} task={t} />
-                ))}
-                {dayTasks.length > 3 && (
-                  <span className="text-[10px] text-gray-400 dark:text-neutral-500 px-1">
-                    +{dayTasks.length - 3} more
-                  </span>
-                )}
-              </div>
-
-              {/* Mobile: dots */}
-              <div className="flex sm:hidden gap-0.5 flex-wrap justify-center mt-auto">
-                {dayTasks.slice(0, 4).map((t, i) => (
-                  <MobileTaskDot key={i} task={t} />
-                ))}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Selected day detail panel */}
-      {selectedDate && (
-        <div className="px-4 mt-2">
-          <h3 className="text-sm font-semibold text-gray-700 dark:text-neutral-200 mb-2">
-            {format(selectedDate, "EEEE, MMMM d")}
-            {selectedTasks.length > 0 && (
-              <span className="text-gray-400 dark:text-neutral-500 font-normal ml-2">
-                {selectedTasks.length} task{selectedTasks.length > 1 ? "s" : ""}
-              </span>
-            )}
-          </h3>
-          {selectedTasks.length === 0 ? (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-400 dark:text-neutral-500">No tasks on this day</p>
-              <Link
-                href={`/add?dueDate=${format(selectedDate, "yyyy-MM-dd")}`}
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 active:scale-[0.98] transition-all"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add task
-              </Link>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {selectedTasks.map((t) => {
-                const colors = t.priority ? PRIORITY_COLORS[t.priority] : DEFAULT_COLORS;
-                const isOverdue =
-                  t.status !== "Completed" &&
-                  t.dueDate &&
-                  t.dueDate.start < format(today, "yyyy-MM-dd");
-
-                const virtual = isVirtual(t);
-
-                return (
-                  <Link
-                    key={t.id}
-                    href={`/task/${realId(t)}`}
-                    className={`flex items-start gap-3 rounded-lg border p-3 bg-white dark:bg-neutral-900 active:bg-gray-50 dark:active:bg-neutral-800 border-l-4 ${colors.border} ${virtual ? "border-dashed border-gray-300 dark:border-neutral-700" : "border-gray-200 dark:border-neutral-800"}`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium text-gray-900 dark:text-neutral-50 ${t.status === "Completed" ? "line-through opacity-60" : ""}`}>
-                        {virtual && <Repeat className="w-3 h-3 inline mr-1 opacity-50" />}
-                        {t.task}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2 mt-1">
-                        {virtual ? (
-                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300">
-                            {t.frequency}
-                          </span>
-                        ) : (
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                            t.status === "Completed"
-                              ? "bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300"
-                              : t.status === "In Progress"
-                                ? "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300"
-                                : "bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-300"
-                          }`}>
-                            {t.status}
-                          </span>
-                        )}
-                        {t.area && (
-                          <span className="text-xs text-gray-500 dark:text-neutral-400">{t.area}</span>
-                        )}
-                        {isOverdue && !virtual && (
-                          <span className="text-xs text-red-600 dark:text-red-400 font-medium">Overdue</span>
-                        )}
-                        {t.costEstimate !== null && (
-                          <span className="text-xs text-gray-400 dark:text-neutral-500">${t.costEstimate}</span>
-                        )}
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gray-400 dark:text-neutral-600 flex-shrink-0 mt-0.5" />
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-      </>}
+      <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+        Dates are plans unless you mark a firm deadline. Projected repeats open
+        the original task.
+      </p>
     </div>
   );
 }

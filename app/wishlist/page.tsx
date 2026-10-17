@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useId, useRef } from "react";
 import {
   Plus, X, Loader2, ArrowLeft, Pencil, Copy, ChevronRight, Archive,
   ArchiveRestore, Trash2, Eye, EyeOff, ArrowUpDown, Rocket, CalendarPlus,
@@ -15,6 +15,7 @@ import { openLightbox } from "@/components/lightbox";
 import { ProjectPlanner } from "@/components/project-planner";
 import { CostSummary } from "@/components/cost-summary";
 import { RoiBadge } from "@/components/roi-badge";
+import { TaskImage } from "@/components/task-image";
 
 const SEASON_ICONS: Record<string, string> = {
   Spring: "🌸", Summer: "☀️", Fall: "🍂", Winter: "❄️", Any: "📅",
@@ -40,11 +41,15 @@ export default function WishListPage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const [plannerBusy, setPlannerBusy] = useState(false);
+  const [aiDraftReady, setAiDraftReady] = useState(false);
+  const loadVersion = useRef(0);
   const [estimatingCost, setEstimatingCost] = useState(false);
   const [confirmDeleteWish, setConfirmDeleteWish] = useState(false);
   const [promoteDate, setPromoteDate] = useState("");
   const [promoteEndDate, setPromoteEndDate] = useState("");
   const router = useRouter();
+  const formId = useId();
 
   // Form state for add/edit
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -57,16 +62,21 @@ export default function WishListPage() {
   });
 
   const loadItems = useCallback(async (archived = false) => {
+    const version = ++loadVersion.current;
     setLoading(true);
     try {
       const res = await fetch(`/api/wishlist${archived ? "?archived=true" : ""}`, {
         headers: secret ? { "x-app-secret": secret } : {},
       });
-      if (res.ok) setItems(await res.json());
+      if (!res.ok) throw new Error("Failed to load wish list. Try again.");
+      const data: WishListItem[] = await res.json();
+      if (version !== loadVersion.current) return;
+      setItems(data);
+      setError(null);
     } catch {
-      setError("Failed to load wish list");
+      if (version === loadVersion.current) setError("Failed to load wish list. Try again.");
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
   }, [secret]);
 
@@ -81,7 +91,7 @@ export default function WishListPage() {
   }
 
   function handlePlanned(plan: WishListPlan, photoUrls: string[]) {
-    setFormData({
+    setFormData((previous) => ({
       project: plan.project,
       description: plan.description,
       aiPlan: plan.plan,
@@ -98,12 +108,14 @@ export default function WishListPage() {
       priority: plan.priority,
       timeline: plan.timeline,
       bestSeason: plan.bestSeason,
-      ...(photoUrls.length > 0 ? { photos: JSON.stringify(photoUrls) } : {}),
-    });
+      ...Object.fromEntries(Object.entries(previous).filter(([, value]) => value !== "")),
+      photos: JSON.stringify([...new Set([...(previous.photos ? JSON.parse(previous.photos) : []), ...photoUrls])]),
+    }));
+    setAiDraftReady(true);
   }
 
   async function handleSave() {
-    if (!formData.project?.trim()) return;
+    if (saving || plannerBusy || !formData.project?.trim()) return;
     setSaving(true);
     setError(null);
     try {
@@ -134,7 +146,7 @@ export default function WishListPage() {
       if (!res.ok) throw new Error((await res.json()).error);
       setShowForm(false);
       setFormData({});
-      loadItems(showArchived);
+      await loadItems(showArchived);
     } catch (e: unknown) {
       setError((e as Error).message);
     } finally {
@@ -143,7 +155,7 @@ export default function WishListPage() {
   }
 
   async function handleUpdate() {
-    if (!selectedItem || !formData.project?.trim()) return;
+    if (saving || !selectedItem || !formData.project?.trim()) return;
     setSaving(true);
     setError(null);
     try {
@@ -174,7 +186,7 @@ export default function WishListPage() {
       if (!res.ok) throw new Error((await res.json()).error);
       setEditing(false);
       setSelectedItem(null);
-      loadItems(showArchived);
+      await loadItems(showArchived);
     } catch (e: unknown) {
       setError((e as Error).message);
     } finally {
@@ -183,27 +195,39 @@ export default function WishListPage() {
   }
 
   async function handleAction(id: string, action: "archive" | "restore") {
+    if (saving) return false;
+    setSaving(true);
+    setError(null);
     try {
-      await fetch(`/api/wishlist/${id}`, {
+      const res = await fetch(`/api/wishlist/${id}`, {
         method: "PATCH", headers: headers(),
         body: JSON.stringify({ _action: action }),
       });
+      if (!res.ok) throw new Error(`Couldn’t ${action} this idea. Try again.`);
       setSelectedItem(null);
-      loadItems(showArchived);
-    } catch (e: unknown) { setError((e as Error).message); }
+      await loadItems(showArchived);
+      return true;
+    } catch (e: unknown) { setError((e as Error).message); return false; }
+    finally { setSaving(false); }
   }
 
   async function handleDelete(id: string) {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
     try {
-      await fetch(`/api/wishlist/${id}`, {
+      const res = await fetch(`/api/wishlist/${id}`, {
         method: "DELETE", headers: headers(),
       });
+      if (!res.ok) throw new Error("Couldn’t delete this idea. Try again.");
       setSelectedItem(null);
-      loadItems(showArchived);
+      await loadItems(showArchived);
     } catch (e: unknown) { setError((e as Error).message); }
+    finally { setSaving(false); }
   }
 
   async function handleDuplicate(item: WishListItem) {
+    if (saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -228,11 +252,12 @@ export default function WishListPage() {
         tags: item.tags.length > 0 ? item.tags : undefined,
         notes: item.notes || undefined,
       };
-      await fetch("/api/wishlist", {
+      const res = await fetch("/api/wishlist", {
         method: "POST", headers: headers(), body: JSON.stringify(body),
       });
+      if (!res.ok) throw new Error("Couldn’t duplicate this idea. Try again.");
       setSelectedItem(null);
-      loadItems(showArchived);
+      await loadItems(showArchived);
     } catch (e: unknown) {
       setError((e as Error).message);
     } finally {
@@ -240,66 +265,43 @@ export default function WishListPage() {
     }
   }
 
-  // Map wish list category to task area/type
-  const CATEGORY_TO_AREA: Record<string, string> = {
-    Landscaping: "Garden", Driveway: "Driveway/Walkway", Interior: "Living Room",
-    Exterior: "Exterior", Roofing: "Roof", Plumbing: "Bathroom",
-    Electrical: "Living Room", General: "Exterior",
-  };
-  const CATEGORY_TO_TYPE: Record<string, string> = {
-    Landscaping: "Landscaping", Driveway: "General Repair", Interior: "Carpentry",
-    Exterior: "Carpentry", Roofing: "General Repair", Plumbing: "Plumbing",
-    Electrical: "Electrical", General: "General Repair",
-  };
-
   async function handlePromote(item: WishListItem) {
-    if (!promoteDate) return;
+    if (saving) return;
     setSaving(true);
     setError(null);
     try {
-      const activeRating = item.costMode === "Hired Out" ? item.hiredRoiRating : item.diyRoiRating;
-      const activeRoi = item.costMode === "Hired Out" ? item.hiredRoi : item.diyRoi;
-      const activeCost = item.costMode === "Hired Out" ? item.hiredCost : item.diyCost;
-      const notes = [
-        item.description,
-        item.aiPlan ? `\nAI Plan:\n${item.aiPlan}` : "",
-        `\nMode: ${item.costMode}`,
-        item.diyCost != null ? `\nDIY Cost: $${item.diyCost.toLocaleString()}` : "",
-        item.hiredCost != null ? `\nHired Cost: $${item.hiredCost.toLocaleString()}` : "",
-        activeRating ? `\nROI: ${activeRoi ?? "?"}% (${activeRating})` : "",
-        item.diyDifficulty ? `\nDIY Difficulty: ${item.diyDifficulty}` : "",
-        item.bestSeason ? `\nBest Season: ${item.bestSeason}` : "",
-        item.photos.length > 0 ? `\n\nPhotos:\n${item.photos.join("\n")}` : "",
-        item.notes ? `\nNotes: ${item.notes}` : "",
-      ].filter(Boolean).join("");
-
-      const body = {
-        task: item.project,
-        status: "Not Started",
-        priority: item.priority || "Medium",
-        area: CATEGORY_TO_AREA[item.category || "General"] || "Exterior",
-        type: [CATEGORY_TO_TYPE[item.category || "General"] || "General Repair"],
-        frequency: "One-time",
-        costEstimate: activeCost || 0,
-        dueDate: { start: promoteDate, ...(promoteEndDate ? { end: promoteEndDate } : {}) },
-        notes,
-      };
-
-      const res = await fetch("/api/tasks", {
-        method: "POST", headers: headers(), body: JSON.stringify(body),
+      const res = await fetch(`/api/wishlist/${item.id}/promote`, {
+        method: "POST", headers: headers(),
+        body: JSON.stringify({ ...(promoteDate ? { date: { start: promoteDate, ...(promoteEndDate ? { end: promoteEndDate } : {}) } } : {}) }),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "Failed to create task");
-
+      if (!res.ok) throw new Error((await res.json()).error || "Couldn't move this idea. Retry to finish safely.");
+      const result = await res.json();
       setPromoting(false);
       setPromoteDate("");
       setPromoteEndDate("");
       setSelectedItem(null);
-      router.push("/calendar");
-    } catch (e: unknown) {
-      setError((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
+      router.push(`/task/${result.taskId}`);
+      router.refresh();
+    } catch (e: unknown) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  }
+
+  function editData(item: WishListItem): Record<string, string> {
+    return Object.fromEntries(Object.entries(item).filter(([, value]) => value != null).map(([key, value]) => [key, key === "photos" ? JSON.stringify(value) : Array.isArray(value) ? value.join(",") : String(value)]));
+  }
+
+  async function changeCostMode(item: WishListItem, mode: string) {
+    if (saving || item.costMode === mode) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/wishlist/${item.id}`, { method: "PATCH", headers: headers(), body: JSON.stringify({ costMode: mode }) });
+      if (!res.ok) throw new Error("Couldn't save the cost choice. Try again.");
+      const updated = { ...item, costMode: mode };
+      setSelectedItem(updated);
+      setItems((prev) => prev.map((row) => row.id === item.id ? updated : row));
+    } catch (e: unknown) { setError((e as Error).message); }
+    finally { setSaving(false); }
   }
 
   async function handleAiCostEstimate(item: WishListItem) {
@@ -346,16 +348,10 @@ export default function WishListPage() {
         bestSeason: item.bestSeason || plan.bestSeason,
       };
 
-      const updateRes = await fetch(`/api/wishlist/${item.id}`, {
-        method: "PATCH",
-        headers: headers(),
-        body: JSON.stringify(body),
-      });
-      if (!updateRes.ok) throw new Error((await updateRes.json()).error || "Failed to save AI estimate");
-
-      const updated = { ...item, ...body };
-      setSelectedItem(updated);
-      setItems((prev) => prev.map((i) => i.id === item.id ? updated : i));
+      // Review estimates before explicitly saving them to the idea.
+      setFormData(editData({ ...item, ...body }));
+      setAiDraftReady(true);
+      setEditing(true);
     } catch (e: unknown) {
       setError((e as Error).message || "Failed to estimate cost");
     } finally {
@@ -423,9 +419,11 @@ export default function WishListPage() {
     return (
       <div className="flex flex-col gap-3">
         <div>
-          <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Project *</label>
-          <input type="text" value={formData.project || ""} onChange={(e) => set("project", e.target.value)} placeholder="Project name" required className={inputClass} />
+          <label htmlFor={`${formId}-project`} className="block text-xs font-medium text-neutral-600 dark:text-neutral-300 mb-1">Project name *</label>
+          <input id={`${formId}-project`} type="text" value={formData.project || ""} onChange={(e) => set("project", e.target.value)} placeholder="Project name" required className={inputClass} />
         </div>
+        {aiDraftReady && <p role="status" className="text-sm text-neutral-600 dark:text-neutral-300">Suggestions are ready under More details. Review them before saving.</p>}
+        <details open={aiDraftReady || undefined} className="rounded-xl border border-neutral-200 p-3 dark:border-neutral-700"><summary className="cursor-pointer py-1 text-sm font-medium">More details</summary><div className="mt-4 flex flex-col gap-3">
         <div>
           <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Description</label>
           <textarea value={formData.description || ""} onChange={(e) => set("description", e.target.value)} rows={2} className={inputClass} />
@@ -450,11 +448,11 @@ export default function WishListPage() {
         </div>
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">DIY ROI</label>
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">DIY cost recovery</label>
             <input type="text" value={formData.diyRoi ? `${formData.diyRoi}%` : ""} readOnly className={`${inputClass} bg-neutral-50 dark:bg-neutral-850 text-neutral-400`} />
           </div>
           <div>
-            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Hired ROI</label>
+            <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Hired cost recovery</label>
             <input type="text" value={formData.hiredRoi ? `${formData.hiredRoi}%` : ""} readOnly className={`${inputClass} bg-neutral-50 dark:bg-neutral-850 text-neutral-400`} />
           </div>
           <div>
@@ -540,12 +538,13 @@ export default function WishListPage() {
           <label className="block text-[10px] font-medium uppercase tracking-wide text-neutral-500 mb-1">Notes</label>
           <textarea value={formData.notes || ""} onChange={(e) => set("notes", e.target.value)} rows={2} placeholder="Contractor quotes, links, ideas..." className={inputClass} />
         </div>
+        </div></details>
         <button
           onClick={onSubmit}
-          disabled={saving || !formData.project?.trim()}
+          disabled={saving || plannerBusy || !formData.project?.trim()}
           className="w-full py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm disabled:opacity-50 hover:bg-blue-700 active:scale-[0.99] transition-all"
         >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : submitLabel}
+          {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : plannerBusy ? "Preparing suggestions…" : submitLabel}
         </button>
       </div>
     );
@@ -566,7 +565,7 @@ export default function WishListPage() {
               <h1 className="text-xl font-bold font-display text-neutral-950 dark:text-neutral-50">Edit Project</h1>
             </div>
           </div>
-          {error && <div className="mx-5 px-4 py-3 bg-red-50 dark:bg-red-950/30 rounded-xl text-sm text-red-600">{error}</div>}
+          {error && <div role="alert" className="mx-5 px-4 py-3 bg-red-50 dark:bg-red-950/30 rounded-xl text-sm text-red-600">{error}</div>}
           <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5">
             {renderForm("Save Changes", handleUpdate)}
           </div>
@@ -616,6 +615,7 @@ export default function WishListPage() {
                   tags: selectedItem.tags.join(","),
                   notes: selectedItem.notes || "",
                 });
+                setAiDraftReady(false);
                 setEditing(true);
               }} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.98] transition-all">
                 <Pencil className="w-4 h-4" /> Edit
@@ -624,19 +624,17 @@ export default function WishListPage() {
           )}
         </div>
 
-        {error && <div className="mx-5 px-4 py-3 bg-red-50 dark:bg-red-950/30 rounded-xl text-sm text-red-600">{error}</div>}
+        {error && <div role="alert" className="mx-5 px-4 py-3 bg-red-50 dark:bg-red-950/30 rounded-xl text-sm text-red-600">{error}</div>}
 
         <div className="flex flex-col gap-4 mx-5">
           {selectedItem.photos.length > 0 && (
             <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden">
               {selectedItem.photos.length === 1 ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={selectedItem.photos[0]} alt={selectedItem.project} className="w-full object-contain max-h-72 cursor-pointer" onClick={() => openLightbox(selectedItem.photos)} />
+                <button type="button" onClick={() => openLightbox(selectedItem.photos)} className="relative block h-64 w-full" aria-label={`View photo of ${selectedItem.project}`}><TaskImage src={selectedItem.photos[0]} alt={selectedItem.project} fill sizes="(max-width: 768px) 100vw, 640px" className="object-contain" /></button>
               ) : (
                 <div className="flex gap-1 overflow-x-auto snap-x snap-mandatory">
                   {selectedItem.photos.map((url, i) => (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img key={i} src={url} alt={`${selectedItem.project} ${i + 1}`} className="w-full flex-shrink-0 snap-center object-contain max-h-72 cursor-pointer" onClick={() => openLightbox(selectedItem.photos, i)} />
+                    <button key={url} type="button" onClick={() => openLightbox(selectedItem.photos, i)} className="relative h-64 w-full shrink-0 snap-center" aria-label={`View photo ${i + 1} of ${selectedItem.project}`}><TaskImage src={url} alt={`${selectedItem.project} ${i + 1}`} fill sizes="(max-width: 768px) 100vw, 640px" className="object-contain" /></button>
                   ))}
                 </div>
               )}
@@ -651,15 +649,7 @@ export default function WishListPage() {
             {/* Toggle */}
             <div className="flex rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700">
               {(["DIY", "Hired Out"] as const).map((mode) => (
-                <button key={mode} onClick={async () => {
-                  const updated = { ...selectedItem, costMode: mode };
-                  setSelectedItem(updated);
-                  setItems((prev) => prev.map((i) => i.id === updated.id ? updated : i));
-                  await fetch(`/api/wishlist/${selectedItem.id}`, {
-                    method: "PATCH", headers: headers(),
-                    body: JSON.stringify({ costMode: mode }),
-                  }).catch(() => {});
-                }}
+                <button key={mode} onClick={() => changeCostMode(selectedItem, mode)} disabled={saving} aria-pressed={selectedItem.costMode === mode}
                   className={`flex-1 py-2 text-sm font-semibold text-center transition-colors ${selectedItem.costMode === mode ? "bg-blue-600 text-white" : "text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"}`}>
                   {mode === "DIY" ? "🔧 DIY" : "👷 Hired Out"}
                 </button>
@@ -713,13 +703,13 @@ export default function WishListPage() {
 
             {/* Value Add + Savings */}
             <div className="text-center">
-              <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">Value Add</p>
+              <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">Estimated resale value added</p>
               <p className="text-lg font-bold text-emerald-600">
                 {selectedItem.valueAdd != null ? `$${selectedItem.valueAdd.toLocaleString()}` : "—"}
               </p>
               {selectedItem.diyCost != null && selectedItem.hiredCost != null && selectedItem.hiredCost > selectedItem.diyCost && (
                 <p className="text-xs text-emerald-600 mt-1 font-medium">
-                  You save ${(selectedItem.hiredCost - selectedItem.diyCost).toLocaleString()} doing it yourself ({Math.round(((selectedItem.hiredCost - selectedItem.diyCost) / selectedItem.hiredCost) * 100)}% less)
+                  Estimated savings: ${(selectedItem.hiredCost - selectedItem.diyCost).toLocaleString()} doing it yourself ({Math.round(((selectedItem.hiredCost - selectedItem.diyCost) / selectedItem.hiredCost) * 100)}% less)
                 </p>
               )}
             </div>
@@ -773,10 +763,10 @@ export default function WishListPage() {
           <div className="flex flex-col gap-2">
             {isArchived ? (
               <div className="flex gap-2">
-                <button onClick={() => handleAction(selectedItem.id, "restore")}
+                {selectedItem.promotedTaskId ? <Link href={`/task/${selectedItem.promotedTaskId}`} className="flex min-h-11 flex-1 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white">Open linked task</Link> : <button onClick={() => handleAction(selectedItem.id, "restore")}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400 text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-950/30 active:scale-[0.98] transition-all">
                   <ArchiveRestore className="w-4 h-4" /> Restore
-                </button>
+                </button>}
                 <button onClick={() => {
                     if (!confirmDeleteWish) { setConfirmDeleteWish(true); setTimeout(() => setConfirmDeleteWish(false), 3000); return; }
                     handleDelete(selectedItem.id); setConfirmDeleteWish(false);
@@ -791,26 +781,27 @@ export default function WishListPage() {
               </div>
             ) : (
               <>
-                {/* Start This Project */}
+                {/* Move to Tasks */}
                 {!promoting ? (
                   <button onClick={() => { setPromoting(true); setPromoteDate(""); setPromoteEndDate(""); }}
                     className="flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 active:scale-[0.98] transition-all">
-                    <Rocket className="w-4 h-4" /> Start This Project
+                    <Rocket className="w-4 h-4" /> Move to Tasks
                   </button>
                 ) : (
                   <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl p-4 flex flex-col gap-3 border border-emerald-200 dark:border-emerald-900">
                     <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-                      <CalendarPlus className="w-4 h-4" /> Schedule it — add to your task list & calendar
+                      <CalendarPlus className="w-4 h-4" /> Move this idea to your tasks
                     </p>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-300">The idea will be archived and linked to its task. Its estimate remains a planning amount.</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[10px] font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-1">Start Date *</label>
-                        <input type="date" value={promoteDate} onChange={(e) => setPromoteDate(e.target.value)}
+                        <label className="block text-[10px] font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-1">Plan for (optional)</label>
+                        <input aria-label="Plan for (optional)" type="date" value={promoteDate} onChange={(e) => setPromoteDate(e.target.value)}
                           className="w-full px-3 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800 dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                       </div>
                       <div>
                         <label className="block text-[10px] font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400 mb-1">End Date</label>
-                        <input type="date" value={promoteEndDate} onChange={(e) => setPromoteEndDate(e.target.value)} min={promoteDate}
+                        <input aria-label="End date (optional)" type="date" disabled={!promoteDate} value={promoteEndDate} onChange={(e) => setPromoteEndDate(e.target.value)} min={promoteDate}
                           className="w-full px-3 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800 dark:bg-neutral-800 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                       </div>
                     </div>
@@ -819,9 +810,9 @@ export default function WishListPage() {
                         className="flex-1 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-500 text-sm font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 active:scale-[0.98] transition-all">
                         Cancel
                       </button>
-                      <button onClick={() => handlePromote(selectedItem)} disabled={saving || !promoteDate}
+                      <button onClick={() => handlePromote(selectedItem)} disabled={saving}
                         className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98] transition-all">
-                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CalendarPlus className="w-4 h-4" /> Add to Calendar</>}
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CalendarPlus className="w-4 h-4" /> Move to Tasks</>}
                       </button>
                     </div>
                   </div>
@@ -863,7 +854,7 @@ export default function WishListPage() {
             <h1 className="text-2xl font-bold font-display tracking-tight text-neutral-950 dark:text-neutral-50">Wish List</h1>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => { setShowForm(!showForm); setFormData({}); }}
+            <button onClick={() => { setShowForm(!showForm); setFormData({}); setAiDraftReady(false); }}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.98] transition-all">
               {showForm ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
               {showForm ? "Cancel" : "Add"}
@@ -871,22 +862,16 @@ export default function WishListPage() {
             <PageMenu />
           </div>
         </div>
-        <p className="text-sm text-neutral-400 mt-0.5 ml-12">Dream projects for Braim Rd</p>
+        <p className="text-sm text-neutral-400 mt-0.5 ml-12">Ideas for your home. No commitment required.</p>
       </div>
 
-      {error && <div className="mx-5 px-4 py-3 bg-red-50 dark:bg-red-950/30 rounded-xl text-sm text-red-600">{error}</div>}
+      {error && <div role="alert" className="mx-5 px-4 py-3 bg-red-50 dark:bg-red-950/30 rounded-xl text-sm text-red-600">{error}</div>}
 
       {/* Add form */}
       {showForm && (
         <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5 flex flex-col gap-4">
-          <ProjectPlanner onPlanned={handlePlanned} />
-          {formData.project && (
-            <>
-              <div className="h-px bg-neutral-200 dark:bg-neutral-700" />
-              <p className="text-xs text-emerald-600 font-medium">AI plan generated — review and save below</p>
-              {renderForm("Save to Wish List", handleSave)}
-            </>
-          )}
+          {renderForm("Save idea", handleSave)}
+          <details><summary className="cursor-pointer py-2 text-sm font-medium">Get help planning this idea</summary><div className="mt-3"><ProjectPlanner onPlanned={handlePlanned} onBusyChange={setPlannerBusy} /></div></details>
         </div>
       )}
 
@@ -899,8 +884,12 @@ export default function WishListPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={async () => {
-                for (const id of selectedIds) await handleAction(id, "archive");
-                setSelectedIds(new Set());
+                const remaining = new Set(selectedIds);
+                for (const id of selectedIds) {
+                  if (await handleAction(id, "archive")) remaining.delete(id);
+                  else break;
+                }
+                setSelectedIds(remaining);
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-medium hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors"
             >
@@ -917,7 +906,7 @@ export default function WishListPage() {
       )}
 
       {/* Cost Summary */}
-      {!loading && items.length > 0 && <CostSummary items={items} selectedIds={selectedIds} />}
+      {!loading && items.length > 0 && <details className="mx-5 rounded-2xl bg-white p-4 dark:bg-neutral-900"><summary className="cursor-pointer py-2 text-sm font-semibold">Compare idea estimates</summary><p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">Optional ideas are separate from spending. Selecting ideas here only compares them.</p><CostSummary items={items} selectedIds={selectedIds} /></details>}
 
       {/* Search */}
       {!showForm && !loading && items.length > 0 && (
@@ -933,14 +922,14 @@ export default function WishListPage() {
       )}
 
       {/* Sort + Archive toggle */}
-      {!showForm && !loading && items.length > 0 && (
+      {!showForm && !loading && (
         <div className="px-5 flex items-center justify-between">
           <div className="flex items-center gap-1">
             <ArrowUpDown className="w-3.5 h-3.5 text-neutral-400" />
             {(["cost", "roi", "priority"] as SortKey[]).map((key) => (
               <button key={key} onClick={() => setSortBy(key)}
                 className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${sortBy === key ? "bg-neutral-950 text-white dark:bg-white dark:text-neutral-950" : "text-neutral-400 hover:text-neutral-600"}`}>
-                {key === "cost" ? "Cost" : key === "roi" ? "ROI" : "Priority"}
+                {key === "cost" ? "Cost" : key === "roi" ? "Recovery" : "Priority"}
               </button>
             ))}
           </div>
@@ -960,23 +949,23 @@ export default function WishListPage() {
       ) : items.length === 0 ? (
         <div className="text-center py-16">
           <div className="text-4xl mb-3">✨</div>
-          <p className="text-lg font-semibold text-neutral-950 dark:text-neutral-50">No dream projects yet</p>
-          <p className="text-sm text-neutral-400 mt-1">Tap Add to plan your first project</p>
+          <p className="text-lg font-semibold text-neutral-950 dark:text-neutral-50">{showArchived ? "No saved ideas yet" : "No active ideas"}</p>
+          <p className="text-sm text-neutral-400 mt-1">Tap Add to save an idea whenever one comes to mind.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-3 px-5">
+          {sortedItems.length === 0 && <p className="py-8 text-center text-sm text-neutral-600 dark:text-neutral-400">No ideas match your search. Try another word.</p>}
           {sortedItems.map((item) => {
             const isArchived = item._status === "Archived";
             const isSelected = selectedIds.has(item.id);
             return (
               <div key={item.id} className={`bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden transition-all ${isArchived ? "opacity-50" : ""}`}>
                 {item.photos.length > 0 && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.photos[0]} alt={item.project} className="w-full h-32 object-cover cursor-pointer" onClick={() => setSelectedItem(item)} />
+                  <button onClick={() => setSelectedItem(item)} aria-label={`Open ${item.project}`} className="relative block h-32 w-full"><TaskImage src={item.photos[0]} alt={item.project} fill sizes="(max-width: 768px) 100vw, 640px" className="object-cover" /></button>
                 )}
                 <div className="flex items-start gap-3 p-4">
                   {/* Checkbox */}
-                  <button onClick={() => toggleSelect(item.id)}
+                  <button onClick={() => toggleSelect(item.id)} aria-label={`Compare ${item.project}`} aria-pressed={isSelected}
                     className={`mt-0.5 w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${isSelected ? "bg-blue-600 border-blue-600 text-white" : "border-neutral-300 dark:border-neutral-600"}`}>
                     {isSelected && <span className="text-xs font-bold">✓</span>}
                   </button>
@@ -985,7 +974,7 @@ export default function WishListPage() {
                   <button onClick={() => setSelectedItem(item)} className="flex-1 text-left min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2 min-w-0">
-                        <h3 className="text-[15px] font-semibold text-neutral-950 dark:text-neutral-50 truncate">{item.project}</h3>
+                        <h3 className="text-[15px] font-semibold text-neutral-950 dark:text-neutral-50">{item.project}</h3>
                         {isArchived && <span className="text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400 font-semibold bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded flex-shrink-0">Archived</span>}
                       </div>
                       <ChevronRight className="w-4 h-4 text-neutral-300 dark:text-neutral-600 flex-shrink-0" />

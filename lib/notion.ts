@@ -2,6 +2,9 @@ import { Client } from "@notionhq/client";
 import type {
   PageObjectResponse,
   QueryDatabaseParameters,
+  UpdatePageParameters,
+  CreatePageParameters,
+  UpdateDatabaseParameters,
 } from "@notionhq/client/build/src/api-endpoints";
 import type {
   Task,
@@ -13,7 +16,7 @@ import type {
   TaskType,
   Frequency,
 } from "./types";
-import { getCached, setCache, clearCache, CACHE_TTL } from "./cache";
+import { getOrLoadCached, clearCache, clearCachePrefix, CACHE_TTL } from "./cache";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 const databaseId = process.env.NOTION_DATABASE_ID!;
@@ -103,6 +106,9 @@ function pageToTask(page: PageObjectResponse): Task {
     frequency: getSelect(page, "Frequency") as Frequency | null,
     dueDate: getDate(page, "Due Date"),
     dateCompleted: getDate(page, "Date Completed"),
+    isDeadline: page.properties["Firm Deadline"]?.type === "checkbox" ? page.properties["Firm Deadline"].checkbox : false,
+    recurrenceAnchor: getDate(page, "Recurrence Anchor"),
+    nextOccurrencePending: page.properties["Next Occurrence Pending"]?.type === "checkbox" ? page.properties["Next Occurrence Pending"].checkbox : false,
     assignedTo: getPeople(page, "Assigned To"),
     contractorVendor: getText(page, "Contractor/Vendor"),
     costEstimate: getNumber(page, "Cost Estimate"),
@@ -121,248 +127,186 @@ export interface GetTasksOptions {
   priority?: Priority;
   area?: Area;
   excludeCompleted?: boolean;
+  /** Mutation recovery must not rely on a process-local cached snapshot. */
+  bypassCache?: boolean;
 }
-
-const TASKS_CACHE_PREFIX = "tasks:";
 
 function tasksCacheKey(options?: GetTasksOptions): string {
-  const parts = [
-    options?.status ?? "",
-    options?.priority ?? "",
-    options?.area ?? "",
-    options?.excludeCompleted ? "xc" : "",
-  ];
-  return `${TASKS_CACHE_PREFIX}${parts.join("|")}`;
+  return `tasks:${[options?.status ?? "", options?.priority ?? "", options?.area ?? "", options?.excludeCompleted ? "xc" : ""].join("|")}`;
 }
 
-function invalidateTasksCache(): void {
-  clearCache();
+function invalidateTasksCache(id?: string, removeAnalysis = false): void {
+  clearCachePrefix("tasks:");
+  clearCache("ai-prioritize");
+  clearCache("ai-suggest");
+  clearCachePrefix("start-my-day:");
+  if (id) {
+    clearCache(`task:${id}`);
+    // Analysis keys include their user-authored inputs, so ordinary saves can reuse them.
+    if (removeAnalysis) clearCachePrefix(`ai-analyze:${id}:`);
+  }
 }
 
 export async function getTasks(options?: GetTasksOptions): Promise<Task[]> {
-  const cacheKey = tasksCacheKey(options);
-  const cached = getCached<Task[]>(cacheKey);
-  if (cached) return cached;
-
-  const filters: QueryDatabaseParameters["filter"][] = [];
-
-  if (options?.status) {
-    filters.push({
-      property: "Status",
-      status: { equals: options.status },
-    } as QueryDatabaseParameters["filter"]);
-  } else if (options?.excludeCompleted) {
-    filters.push({
-      property: "Status",
-      status: { does_not_equal: "Completed" },
-    } as QueryDatabaseParameters["filter"]);
-  }
-  if (options?.priority) {
-    filters.push({
-      property: "Priority",
-      select: { equals: options.priority },
-    } as QueryDatabaseParameters["filter"]);
-  }
-  if (options?.area) {
-    filters.push({
-      property: "Area",
-      select: { equals: options.area },
-    } as QueryDatabaseParameters["filter"]);
-  }
-
-  const query: QueryDatabaseParameters = {
-    database_id: databaseId,
-    sorts: [{ property: "Due Date", direction: "ascending" }],
+  const load = async () => {
+    const filters: Extract<NonNullable<QueryDatabaseParameters["filter"]>, { property: string }>[] = [];
+    if (options?.status) filters.push({ property: "Status", status: { equals: options.status } });
+    else if (options?.excludeCompleted) filters.push({ property: "Status", status: { does_not_equal: "Completed" } });
+    if (options?.priority) filters.push({ property: "Priority", select: { equals: options.priority } });
+    if (options?.area) filters.push({ property: "Area", select: { equals: options.area } });
+    const query: QueryDatabaseParameters = {
+      database_id: databaseId,
+      page_size: 100,
+      sorts: [{ property: "Due Date", direction: "ascending" }],
+      ...(filters.length === 1 ? { filter: filters[0] } : filters.length > 1 ? { filter: { and: filters } } : {}),
+    };
+    const tasks: Task[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const response = await notion.databases.query({ ...query, ...(cursor ? { start_cursor: cursor } : {}) });
+      for (const page of response.results) {
+        if (page.object === "page" && "properties" in page && !seen.has(page.id)) {
+          tasks.push(pageToTask(page));
+          seen.add(page.id);
+        }
+      }
+      if (!response.has_more) break;
+      if (!response.next_cursor || response.next_cursor === cursor) throw new Error("Task pagination did not advance");
+      cursor = response.next_cursor;
+    } while (cursor);
+    return tasks;
   };
-
-  if (filters.length === 1) {
-    query.filter = filters[0];
-  } else if (filters.length > 1) {
-    query.filter = { and: filters } as QueryDatabaseParameters["filter"];
-  }
-
-  const response = await notion.databases.query(query);
-  const tasks = response.results
-    .filter((p): p is PageObjectResponse => "properties" in p)
-    .map(pageToTask);
-
-  setCache(cacheKey, tasks, CACHE_TTL.TASK_LIST);
-  return tasks;
+  return options?.bypassCache ? load() : getOrLoadCached(tasksCacheKey(options), CACHE_TTL.TASK_LIST, load);
 }
 
-export async function getTask(id: string): Promise<Task> {
-  const page = (await notion.pages.retrieve({ page_id: id })) as PageObjectResponse;
-  return pageToTask(page);
-}
-
-export async function createTask(input: CreateTaskInput): Promise<Task> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const properties: Record<string, any> = {
-    Task: { title: [{ text: { content: input.task } }] },
+export async function getTask(id: string, options?: { bypassCache?: boolean }): Promise<Task> {
+  const load = async () => {
+    const page = await notion.pages.retrieve({ page_id: id });
+    if (!("properties" in page) || page.archived) throw new Error("Task not found");
+    return pageToTask(page);
   };
-
-  if (input.status) {
-    properties["Status"] = { status: { name: input.status } };
-  }
-  if (input.priority) {
-    properties["Priority"] = { select: { name: input.priority } };
-  }
-  if (input.area) {
-    properties["Area"] = { select: { name: input.area } };
-  }
-  if (input.subLocation) {
-    properties["Sub-location"] = {
-      rich_text: [{ text: { content: input.subLocation } }],
-    };
-  }
-  if (input.type && input.type.length > 0) {
-    properties["Type"] = {
-      multi_select: input.type.map((t) => ({ name: t })),
-    };
-  }
-  if (input.frequency) {
-    properties["Frequency"] = { select: { name: input.frequency } };
-  }
-  if (input.dueDate) {
-    properties["Due Date"] = {
-      date: { start: input.dueDate.start, end: input.dueDate.end ?? null },
-    };
-  }
-  if (input.contractorVendor) {
-    properties["Contractor/Vendor"] = {
-      rich_text: [{ text: { content: input.contractorVendor } }],
-    };
-  }
-  if (input.costEstimate !== undefined) {
-    properties["Cost Estimate"] = { number: input.costEstimate };
-  }
-  if (input.notes) {
-    properties["Notes"] = {
-      rich_text: richTextChunks(input.notes),
-    };
-  }
-  if (input.tags && input.tags.length > 0) {
-    properties["Tags"] = {
-      multi_select: input.tags.map((t) => ({ name: t })),
-    };
-  }
-  if (input.workMode) {
-    properties["Work Mode"] = { select: { name: input.workMode } };
-  }
-
-  const page = (await notion.pages.create({
-    parent: { database_id: databaseId },
-    properties,
-  })) as PageObjectResponse;
-
-  invalidateTasksCache();
-  return pageToTask(page);
+  return options?.bypassCache ? load() : getOrLoadCached(`task:${id}`, 0, load);
 }
 
-export async function updateTask(
-  id: string,
-  input: UpdateTaskInput
-): Promise<Task> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const properties: Record<string, any> = {};
+type TaskProperties = NonNullable<UpdatePageParameters["properties"]>;
+type TaskDate = NonNullable<Task["dueDate"]>;
 
-  if (input.task !== undefined) {
-    properties["Task"] = { title: [{ text: { content: input.task } }] };
-  }
-  if (input.status !== undefined) {
-    properties["Status"] = { status: { name: input.status } };
-  }
-  if (input.priority !== undefined) {
-    properties["Priority"] = { select: { name: input.priority } };
-  }
-  if (input.area !== undefined) {
-    properties["Area"] = { select: { name: input.area } };
-  }
-  if (input.subLocation !== undefined) {
-    properties["Sub-location"] = {
-      rich_text: [{ text: { content: input.subLocation } }],
-    };
-  }
-  if (input.type !== undefined) {
-    properties["Type"] = {
-      multi_select: input.type.map((t) => ({ name: t })),
-    };
-  }
-  if (input.frequency !== undefined) {
-    properties["Frequency"] = { select: { name: input.frequency } };
-  }
+function taskProperties(input: CreateTaskInput | UpdateTaskInput): TaskProperties {
+  const properties: TaskProperties = {};
+  if (input.task !== undefined) properties.Task = { title: [{ text: { content: input.task } }] };
+  if (input.status !== undefined) properties.Status = { status: { name: input.status } };
+  if (input.priority !== undefined) properties.Priority = { select: input.priority ? { name: input.priority } : null };
+  if (input.area !== undefined) properties.Area = { select: input.area ? { name: input.area } : null };
+  if (input.subLocation !== undefined) properties["Sub-location"] = { rich_text: input.subLocation ? richTextChunks(input.subLocation) : [] };
+  if (input.type !== undefined) properties.Type = { multi_select: input.type.map((name) => ({ name })) };
+  if (input.frequency !== undefined) properties.Frequency = { select: input.frequency ? { name: input.frequency } : null };
   if (input.dueDate !== undefined) {
-    properties["Due Date"] = input.dueDate
-      ? { date: { start: input.dueDate.start, end: input.dueDate.end ?? null } }
-      : { date: null };
+    properties["Due Date"] = { date: input.dueDate ? { start: input.dueDate.start, end: input.dueDate.end ?? null } : null };
   }
-  if (input.dateCompleted !== undefined) {
-    properties["Date Completed"] = input.dateCompleted
-      ? { date: { start: input.dateCompleted.start, end: input.dateCompleted.end ?? null } }
-      : { date: null };
-  }
-  if (input.contractorVendor !== undefined) {
-    properties["Contractor/Vendor"] = {
-      rich_text: [{ text: { content: input.contractorVendor } }],
-    };
-  }
-  if (input.costEstimate !== undefined) {
-    properties["Cost Estimate"] = { number: input.costEstimate };
-  }
-  if (input.actualCost !== undefined) {
-    properties["Actual Cost"] = { number: input.actualCost };
-  }
-  if (input.notes !== undefined) {
-    properties["Notes"] = {
-      rich_text: input.notes ? richTextChunks(input.notes) : [],
-    };
-  }
-  if (input.tags !== undefined) {
-    properties["Tags"] = {
-      multi_select: input.tags.map((t) => ({ name: t })),
-    };
-  }
-  if (input.workMode !== undefined) {
-    properties["Work Mode"] = input.workMode
-      ? { select: { name: input.workMode } }
-      : { select: null };
-  }
+  if (input.dueDate === null) properties["Firm Deadline"] = { checkbox: false };
+  else if (input.isDeadline !== undefined) properties["Firm Deadline"] = { checkbox: input.isDeadline };
+  if ("dateCompleted" in input && input.dateCompleted !== undefined) properties["Date Completed"] = { date: input.dateCompleted ? { start: input.dateCompleted.start, end: input.dateCompleted.end ?? null } : null };
+  if (input.contractorVendor !== undefined) properties["Contractor/Vendor"] = { rich_text: input.contractorVendor ? richTextChunks(input.contractorVendor) : [] };
+  if (input.costEstimate !== undefined) properties["Cost Estimate"] = { number: input.costEstimate };
+  if ("actualCost" in input && input.actualCost !== undefined) properties["Actual Cost"] = { number: input.actualCost };
+  if (input.notes !== undefined) properties.Notes = { rich_text: input.notes ? richTextChunks(input.notes) : [] };
+  if (input.tags !== undefined) properties.Tags = { multi_select: input.tags.map((name) => ({ name })) };
+  if (input.workMode !== undefined) properties["Work Mode"] = { select: input.workMode ? { name: input.workMode } : null };
+  return properties;
+}
 
-  const page = (await notion.pages.update({
-    page_id: id,
-    properties,
-  })) as PageObjectResponse;
-
-  invalidateTasksCache();
+export async function createTask(input: CreateTaskInput, recurrence?: { sourceId: string; anchor: TaskDate }, internal?: { wishlistSourceId?: string }): Promise<Task> {
+  await ensureNotesProperty({ strict: true });
+  const properties = taskProperties(input);
+  if (input.dueDate) properties["Recurrence Anchor"] = { date: { start: input.dueDate.start, end: input.dueDate.end ?? null } };
+  if (input.status === "Completed") properties["Date Completed"] = { date: { start: new Date().toISOString().slice(0, 10) } };
+  if (internal?.wishlistSourceId) properties["Wishlist Source"] = { rich_text: richTextChunks(internal.wishlistSourceId) };
+  if (recurrence) {
+    properties["Recurrence Source"] = { rich_text: richTextChunks(recurrence.sourceId) };
+    properties["Recurrence Anchor"] = { date: { start: recurrence.anchor.start, end: recurrence.anchor.end ?? null } };
+  }
+  const page = await notion.pages.create({ parent: { database_id: databaseId }, properties: properties as CreatePageParameters["properties"] }).finally(() => invalidateTasksCache());
+  if (!("properties" in page)) throw new Error("Task was created but could not be read");
   return pageToTask(page);
+}
+
+export async function updateTask(id: string, input: UpdateTaskInput, internal?: { nextOccurrencePending?: boolean; currentTask?: Task }): Promise<Task> {
+  await ensureNotesProperty({ strict: true });
+  const properties = taskProperties(input);
+  if (input.dueDate !== undefined) {
+    const current = internal?.currentTask ?? await getTask(id, { bypassCache: true });
+    if (input.dueDate?.start !== current.dueDate?.start || input.dueDate?.end !== current.dueDate?.end) {
+      properties["Recurrence Anchor"] = { date: input.dueDate ? { start: input.dueDate.start, end: input.dueDate.end ?? null } : null };
+    }
+  }
+  if (internal?.nextOccurrencePending !== undefined) properties["Next Occurrence Pending"] = { checkbox: internal.nextOccurrencePending };
+  const page = await notion.pages.update({ page_id: id, properties }).finally(() => invalidateTasksCache(id));
+  if (!("properties" in page)) throw new Error("Task was saved but could not be read");
+  return pageToTask(page);
+}
+
+/** Query persisted identity to recover after a lost response or failed completion retry. */
+export async function findNextOccurrence(sourceId: string): Promise<Task | null> {
+  await ensureNotesProperty({ strict: true });
+  const response = await notion.databases.query({
+    database_id: databaseId,
+    filter: { property: "Recurrence Source", rich_text: { equals: sourceId } },
+    page_size: 1,
+  });
+  const page = response.results.find((result): result is PageObjectResponse => result.object === "page" && "properties" in result && !result.archived);
+  return page ? pageToTask(page) : null;
+}
+
+/** Fresh promotion recovery lookup; legacy markers remain readable during rollout. */
+export async function findWishlistTask(sourceId: string): Promise<Task | null> {
+  await ensureNotesProperty({ strict: true });
+  const query = async (property: string, rich_text: { equals: string } | { contains: string }) => {
+    const response = await notion.databases.query({ database_id: databaseId, filter: { property, rich_text }, page_size: 1 });
+    const page = response.results.find((result): result is PageObjectResponse => result.object === "page" && "properties" in result && !result.archived);
+    return page ? pageToTask(page) : null;
+  };
+  return await query("Wishlist Source", { equals: sourceId }) ?? await query("Notes", { contains: `[wishlist-source:${sourceId}]` });
 }
 
 export async function deleteTask(id: string): Promise<void> {
-  await notion.pages.update({ page_id: id, archived: true });
-  invalidateTasksCache();
+  await notion.pages.update({ page_id: id, archived: true }).finally(() => invalidateTasksCache(id, true));
 }
 
-// Ensure the "Notes" and "Tags" properties exist in the database
-let propertiesEnsured = false;
-export async function ensureNotesProperty(): Promise<void> {
-  if (propertiesEnsured) return;
+/** Serialize writes for one task in this process. Notion has no cross-instance transaction. */
+const taskMutations = new Map<string, Promise<unknown>>();
+export async function withTaskMutation<T>(id: string, mutation: () => Promise<T>): Promise<T> {
+  const previous = taskMutations.get(id) ?? Promise.resolve();
+  const pending = previous.catch(() => undefined).then(mutation);
+  taskMutations.set(id, pending);
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = (await notion.databases.retrieve({ database_id: databaseId })) as any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const missing: Record<string, any> = {};
-    if (!db.properties?.["Notes"]) missing.Notes = { rich_text: {} };
-    if (!db.properties?.["Tags"]) missing.Tags = { multi_select: { options: [] } };
-    if (!db.properties?.["Work Mode"]) missing["Work Mode"] = { select: { options: [{ name: "DIY" }, { name: "Contractor" }] } };
-    if (Object.keys(missing).length > 0) {
-      await notion.databases.update({
-        database_id: databaseId,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        properties: missing as any,
-      });
-    }
-    propertiesEnsured = true;
-  } catch {
-    // Non-critical — missing properties will just render as empty
+    return await pending;
+  } finally {
+    if (taskMutations.get(id) === pending) taskMutations.delete(id);
+  }
+}
+
+// Extend existing databases lazily. Read pages can still render if setup is unavailable;
+// writes require schema readiness so a missing checkbox cannot silently lose intent.
+export async function ensureNotesProperty(options?: { strict?: boolean }): Promise<void> {
+  try {
+    await getOrLoadCached("schema:tasks", CACHE_TTL.SCHEMA_SYNC, async () => {
+      const db = await notion.databases.retrieve({ database_id: databaseId });
+      if (!("properties" in db)) throw new Error("Task database is unavailable");
+      const missing: NonNullable<UpdateDatabaseParameters["properties"]> = {};
+      if (!db.properties.Notes) missing.Notes = { rich_text: {} };
+      if (!db.properties.Tags) missing.Tags = { multi_select: { options: [] } };
+      if (!db.properties["Work Mode"]) missing["Work Mode"] = { select: { options: [{ name: "DIY" }, { name: "Contractor" }] } };
+      if (!db.properties["Firm Deadline"]) missing["Firm Deadline"] = { checkbox: {} };
+      if (!db.properties["Wishlist Source"]) missing["Wishlist Source"] = { rich_text: {} };
+      if (!db.properties["Recurrence Source"]) missing["Recurrence Source"] = { rich_text: {} };
+      if (!db.properties["Recurrence Anchor"]) missing["Recurrence Anchor"] = { date: {} };
+      if (!db.properties["Next Occurrence Pending"]) missing["Next Occurrence Pending"] = { checkbox: {} };
+      if (Object.keys(missing).length) await notion.databases.update({ database_id: databaseId, properties: missing });
+      return true;
+    });
+  } catch (error) {
+    if (options?.strict) throw error;
+    console.error("Task property setup failed:", error);
   }
 }

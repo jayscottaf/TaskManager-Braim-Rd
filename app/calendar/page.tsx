@@ -16,7 +16,7 @@ export default async function CalendarPage() {
         <div className="px-5 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold font-display tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">Calendar</h1>
-            <p className="text-sm text-neutral-400 mt-0.5">Tasks by due date</p>
+            <p className="text-sm text-neutral-400 mt-0.5">Planned dates and firm deadlines</p>
           </div>
           <PageMenu />
         </div>
@@ -34,7 +34,7 @@ export default async function CalendarPage() {
       <div className="px-5 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold font-display tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">Calendar</h1>
-          <p className="text-sm text-neutral-400 mt-0.5">Tasks by due date</p>
+          <p className="text-sm text-neutral-400 mt-0.5">Planned dates and firm deadlines</p>
         </div>
         <PageMenu />
       </div>

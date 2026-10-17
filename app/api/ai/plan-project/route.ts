@@ -1,39 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { planWishListProject } from "@/lib/ai";
 import { checkAuth } from "@/lib/auth";
-
-export const maxDuration = 30;
+import { analysisImage, ImageInputError, imageFromForm, imageRequestData } from "@/lib/image-server";
 
 export async function POST(request: NextRequest) {
   const authError = checkAuth(request);
   if (authError) return authError;
-
   try {
-    const formData = await request.formData();
-    const description = formData.get("description") as string;
-    const file = formData.get("image") as File | null;
-
-    if (!description?.trim()) {
-      return NextResponse.json({ error: "Description required" }, { status: 400 });
-    }
-
-    let imageBase64: string | undefined;
-    let mediaType: string | undefined;
-
-    if (file) {
-      const bytes = await file.arrayBuffer();
-      imageBase64 = Buffer.from(bytes).toString("base64");
-      mediaType = file.type;
-    }
-
-    const plan = await planWishListProject(description, imageBase64, mediaType);
-    return NextResponse.json(plan);
+    const form = await imageRequestData(request);
+    const description = String(form.get("description") || "").trim();
+    if (!description || description.length > 10_000) throw new ImageInputError("Enter a project description under 10,000 characters");
+    const image = form.has("image") || form.has("imageUrl") ? await analysisImage(await imageFromForm(form)) : undefined;
+    return NextResponse.json(await planWishListProject(description, image?.base64, image?.mediaType));
   } catch (error) {
+    if (error instanceof ImageInputError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error("Plan project error:", error);
-    const msg = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json(
-      { error: `Failed to plan project: ${msg}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Could not plan this project. Your photos are kept here; please try again." }, { status: 500 });
   }
 }

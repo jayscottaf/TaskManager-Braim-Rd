@@ -18,7 +18,7 @@ export default function StorePage() {
     .filter((t) =>
       !search || t.name.toLowerCase().includes(search.toLowerCase()) || t.description.toLowerCase().includes(search.toLowerCase())
     )
-    .sort((a, b) => b.popularity - a.popularity);
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="flex flex-col gap-6 pt-6 pb-24 animate-fade-in">
@@ -32,13 +32,13 @@ export default function StorePage() {
               <ArrowLeft className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
             </Link>
             <h1 className="text-3xl font-bold font-display tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">
-              Feature Store
+              Home records
             </h1>
           </div>
           <PageMenu />
         </div>
         <p className="text-sm text-neutral-400 mt-0.5 ml-12">
-          Add new capabilities to your app
+          Keep useful details about your home in one place.
         </p>
       </div>
 
@@ -50,7 +50,8 @@ export default function StorePage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search features..."
+            aria-label="Search home records"
+            placeholder="Search home records..."
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
           />
         </div>

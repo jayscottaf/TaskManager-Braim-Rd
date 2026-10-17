@@ -1,54 +1,17 @@
 import type { WishListItem } from "@/lib/wishlist";
-import { getActiveCost, getActiveRoi } from "@/lib/wishlist";
+import { getActiveCost } from "@/lib/wishlist-values";
 
-interface CostSummaryProps {
-  items: WishListItem[];
-  selectedIds: Set<string>;
-}
-
-export function CostSummary({ items, selectedIds }: CostSummaryProps) {
-  const activeItems = items.filter((i) => i._status !== "Archived");
-  const selectedItems = activeItems.filter((i) => selectedIds.has(i.id));
-
-  const totalCost = activeItems.reduce((sum, i) => sum + (getActiveCost(i) || 0), 0);
-  const selectedCost = selectedItems.reduce((sum, i) => sum + (getActiveCost(i) || 0), 0);
-
-  const roisForAvg = (selectedItems.length > 0 ? selectedItems : activeItems)
-    .filter((i) => getActiveCost(i) != null && getActiveCost(i)! > 0 && getActiveRoi(i) != null)
-    .map((i) => getActiveRoi(i)!);
-  const avgRoi = roisForAvg.length > 0
-    ? Math.round(roisForAvg.reduce((a, b) => a + b, 0) / roisForAvg.length)
-    : null;
-
-  return (
-    <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-4">
-      <div className="grid grid-cols-3 gap-3 text-center">
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">All Items</p>
-          <p className="text-lg font-bold text-neutral-950 dark:text-neutral-50">
-            ${totalCost.toLocaleString()}
-          </p>
-          <p className="text-[10px] text-neutral-400">{activeItems.length} project{activeItems.length !== 1 ? "s" : ""}</p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">Selected</p>
-          <p className="text-lg font-bold text-blue-600">
-            {selectedItems.length > 0 ? `$${selectedCost.toLocaleString()}` : "—"}
-          </p>
-          <p className="text-[10px] text-neutral-400">
-            {selectedItems.length > 0 ? `${selectedItems.length} project${selectedItems.length !== 1 ? "s" : ""}` : "none"}
-          </p>
-        </div>
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-neutral-400 font-medium">Avg ROI</p>
-          <p className={`text-lg font-bold ${avgRoi != null && avgRoi >= 100 ? "text-emerald-600" : avgRoi != null && avgRoi >= 50 ? "text-blue-600" : "text-neutral-400"}`}>
-            {avgRoi != null ? `${avgRoi}%` : "—"}
-          </p>
-          <p className="text-[10px] text-neutral-400">
-            {selectedItems.length > 0 ? "of selected" : "of all"}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+export function CostSummary({ items, selectedIds }: { items: WishListItem[]; selectedIds: Set<string> }) {
+  const active = items.filter((item) => item._status !== "Archived" && !item.promotedTaskId);
+  const selected = active.filter((item) => selectedIds.has(item.id));
+  const compared = selected.length > 0 ? selected : active;
+  const estimate = compared.reduce((sum, item) => sum + (getActiveCost(item) ?? 0), 0);
+  // Recovery is value added / cost, not net profit or a simple average of project percentages.
+  const comparable = compared.filter((item) => (getActiveCost(item) ?? 0) > 0 && item.valueAdd != null);
+  const comparableCost = comparable.reduce((sum, item) => sum + getActiveCost(item)!, 0);
+  const valueAdded = comparable.reduce((sum, item) => sum + (item.valueAdd ?? 0), 0);
+  return <div className="mt-4 grid grid-cols-2 gap-4 border-t border-neutral-200 pt-4 dark:border-neutral-700">
+    <div><p className="text-xs text-neutral-600 dark:text-neutral-400">{selected.length ? "Selected estimates" : "All idea estimates"}</p><p className="mt-1 text-xl font-semibold">${estimate.toLocaleString()}</p><p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">{compared.length} optional idea{compared.length === 1 ? "" : "s"}</p></div>
+    <div><p className="text-xs text-neutral-600 dark:text-neutral-400">Estimated cost recovery</p><p className="mt-1 text-xl font-semibold">{comparableCost > 0 ? `${Math.round(valueAdded / comparableCost * 100)}%` : "—"}</p><p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">Resale value added ÷ cost, where both are estimated. Not profit.</p></div>
+  </div>;
 }

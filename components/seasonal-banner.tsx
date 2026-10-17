@@ -6,12 +6,12 @@ import { getActiveSeasons, getUpcomingSeasons } from "@/lib/seasonal";
 import { Sun, Snowflake, Leaf, Flower, ChevronDown, ChevronUp, Plus, Check, Calendar } from "lucide-react";
 import type { SeasonalRule } from "@/lib/seasonal";
 
-function getSeasonIcon(name: string) {
+function SeasonIcon({ name, className }: { name: string; className?: string }) {
   const lower = name.toLowerCase();
-  if (lower.includes("winter") || lower.includes("snow")) return Snowflake;
-  if (lower.includes("fall") || lower.includes("pool closing")) return Leaf;
-  if (lower.includes("spring") || lower.includes("pool opening")) return Flower;
-  return Sun;
+  if (lower.includes("winter") || lower.includes("snow")) return <Snowflake className={className} />;
+  if (lower.includes("fall") || lower.includes("pool closing")) return <Leaf className={className} />;
+  if (lower.includes("spring") || lower.includes("pool opening")) return <Flower className={className} />;
+  return <Sun className={className} />;
 }
 
 /** Build the due date from the season's end window */
@@ -50,7 +50,6 @@ function SeasonCard({
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
-  const Icon = getSeasonIcon(season.name);
 
   const colors = variant === "active"
     ? {
@@ -60,16 +59,16 @@ function SeasonCard({
         badge: "bg-blue-100 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300",
         taskBg: "bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800",
         addBtn: "bg-blue-600 hover:bg-blue-700 text-white",
-        doneBtn: "bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400",
+        doneBtn: "bg-blue-50 text-accent",
       }
     : {
         bg: "bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800",
         text: "text-neutral-900 dark:text-neutral-50",
         sub: "text-neutral-500 dark:text-neutral-400",
-        badge: "bg-amber-100 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400",
+        badge: "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300",
         taskBg: "bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800",
         addBtn: "bg-blue-600 hover:bg-blue-700 text-white",
-        doneBtn: "bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400",
+        doneBtn: "bg-blue-50 text-accent",
       };
 
   // Check which suggestions already exist as tasks
@@ -91,7 +90,7 @@ function SeasonCard({
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left"
       >
-        <Icon className={`w-5 h-5 ${colors.text} flex-shrink-0`} />
+        <SeasonIcon name={season.name} className={`w-5 h-5 ${colors.text} flex-shrink-0`} />
         <div className="flex-1 min-w-0">
           <p className={`text-sm font-semibold ${colors.text}`}>
             {season.name}

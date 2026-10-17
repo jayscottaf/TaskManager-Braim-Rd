@@ -1,41 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { checkAuth } from "@/lib/auth";
+import { classifyPaintLabel, classifyPhoto } from "@/lib/ai";
+import { analysisImage, ImageInputError, imageRequestData, uploadedImage } from "@/lib/image-server";
 
 export async function POST(request: NextRequest) {
   const authError = checkAuth(request);
   if (authError) return authError;
-
   try {
-    const formData = await request.formData();
-    const file = formData.get("image") as File | null;
-
-    if (!file) {
-      return NextResponse.json({ error: "No image provided" }, { status: 400 });
-    }
-
-    // Validate file type — only allow images
-    const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      return NextResponse.json({ error: "Only image files are allowed" }, { status: 400 });
-    }
-
-    // Validate file size — 10MB max
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 400 });
-    }
-
-    // Sanitize filename — strip path separators and special chars
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
-
-    const blob = await put(`paint-labels/${Date.now()}-${safeName}`, file, {
-      access: "public",
+    const form = await imageRequestData(request);
+    const file = form.get("image");
+    const image = await uploadedImage(file);
+    const analysis = form.get("analysis");
+    if (analysis && analysis !== "task" && analysis !== "paint") throw new ImageInputError("Unknown photo analysis");
+    const context = String(form.get("context") || "").slice(0, 2000);
+    const safeName = (file as File).name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-100) || "photo.jpg";
+    const blob = await put(`photos/${safeName}`, image.buffer, {
+      access: "public", addRandomSuffix: true, contentType: image.mediaType,
     });
-
+    if (analysis) {
+      try {
+        // Reuse the validated buffer; no second browser upload or Blob download.
+        const prepared = await analysisImage(image, analysis === "paint");
+        const classification = analysis === "paint"
+          ? await classifyPaintLabel(prepared.base64, prepared.mediaType)
+          : await classifyPhoto(prepared.base64, prepared.mediaType, context);
+        return NextResponse.json({ url: blob.url, classification });
+      } catch (error) {
+        console.error("Uploaded photo analysis failed:", error);
+        return NextResponse.json({ url: blob.url, analysisError: "Photo attached. Suggestions are unavailable; retry or enter the details yourself." });
+      }
+    }
     return NextResponse.json({ url: blob.url });
   } catch (error) {
+    if (error instanceof ImageInputError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error("Upload error:", error);
-    const msg = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: `Upload failed: ${msg}` }, { status: 500 });
+    return NextResponse.json({ error: "Photo did not upload. Please try again." }, { status: 500 });
   }
 }

@@ -1,700 +1,331 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X, Loader2 } from "lucide-react";
+import { Camera, ChevronDown, Loader2, Plus, X } from "lucide-react";
 import { showToast } from "@/components/toast";
 import { openLightbox } from "@/components/lightbox";
-import type {
-  Task,
-  CreateTaskInput,
-  UpdateTaskInput,
-  Priority,
-  Status,
-  Area,
-  TaskType,
-  Frequency,
-} from "@/lib/types";
-import {
-  PRIORITIES,
-  STATUSES,
-  AREAS,
-  TASK_TYPES,
-  FREQUENCIES,
-} from "@/lib/types";
+import { TaskImage } from "@/components/task-image";
+import { RequestError, requestJson, safeReturnTo, taskRequestHeaders } from "@/lib/client-request";
+import { initialTaskDraft, draftUpdate, mergePhotoSuggestions, recoverPendingCompletion, validateTaskDraft, type TaskDraft } from "@/lib/task-form-data";
+import { parseTaskNotes } from "@/lib/task-notes";
+import { householdDateKey } from "@/lib/household-date";
+import { analyzeUploadedImage, uploadImage } from "@/lib/image-client";
+import type { PhotoClassification, TaskAnalysis } from "@/lib/ai";
+import type { Task, CreateTaskInput, Priority, Area, Frequency, Status } from "@/lib/types";
+import { PRIORITIES, STATUSES, AREAS, TASK_TYPES, FREQUENCIES } from "@/lib/types";
 
-function extractPhotoUrls(text: string | null): string[] {
-  if (!text) return [];
-  const urls: string[] = [];
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("http") && (trimmed.includes("blob.vercel-storage") || trimmed.includes("/paint-labels/"))) {
-      urls.push(trimmed);
-    }
-  }
-  return urls;
+export interface TaskAIUpdate {
+  revision: number;
+  costEstimate?: number;
+  workMode?: "DIY" | "Contractor";
+  analysis?: TaskAnalysis;
 }
 
 interface TaskFormProps {
-  task?: Task;
+  task?: Partial<Task>;
   mode: "create" | "edit";
-  photoUrls?: string[];
+  returnTo?: string | null;
+  aiUpdate?: TaskAIUpdate;
+  children?: ReactNode;
 }
 
-export function TaskForm({ task, mode, photoUrls: initialPhotoUrls }: TaskFormProps) {
+const inputClass = "w-full min-h-12 px-3.5 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent";
+const labelClass = "block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2";
+const secondaryButton = "min-h-11 px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50";
+
+export function TaskForm({ task, mode, returnTo, aiUpdate, children }: TaskFormProps) {
   const router = useRouter();
+  const [draft, setDraft] = useState(() => initialTaskDraft(task));
   const [saving, setSaving] = useState(false);
+  const [recurrencePending, setRecurrencePending] = useState(task?.nextOccurrencePending ?? false);
   const [error, setError] = useState<string | null>(null);
+  const [photoMessage, setPhotoMessage] = useState<string | null>(null);
+  const [analysisRetry, setAnalysisRetry] = useState<{ url: string; context: string } | null>(null);
+  const [uploadCount, setUploadCount] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showCompletePhoto, setShowCompletePhoto] = useState(false);
   const [afterPhotoUrl, setAfterPhotoUrl] = useState<string | null>(null);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-
-  const [name, setName] = useState(task?.task ?? "");
-  const [status, setStatus] = useState<Status>(task?.status ?? "Not Started");
-  const [priority, setPriority] = useState<Priority | "">(task?.priority ?? "");
-  const [taskWorkMode, setTaskWorkMode] = useState<"DIY" | "Contractor" | "">(task?.workMode ?? "");
-  const [area, setArea] = useState<Area | "">(task?.area ?? "");
-  const [subLocation, setSubLocation] = useState(task?.subLocation ?? "");
-  const [types, setTypes] = useState<TaskType[]>(task?.type ?? []);
-  const [frequency, setFrequency] = useState<Frequency | "">(task?.frequency ?? "");
-  const [dueDateStart, setDueDateStart] = useState(task?.dueDate?.start ?? "");
-  const [dueDateEnd, setDueDateEnd] = useState(task?.dueDate?.end ?? "");
-  const [contractorVendor, setContractorVendor] = useState(task?.contractorVendor ?? "");
-  const [costEstimate, setCostEstimate] = useState(task?.costEstimate?.toString() ?? "");
-  const [actualCost, setActualCost] = useState(task?.actualCost?.toString() ?? "");
-  const [notes, setNotes] = useState(() => {
-    const raw = task?.notes ?? "";
-    return raw.split("\n\nAI Analysis:\n")[0].trimEnd();
-  });
-  const [tags, setTags] = useState<string[]>(task?.tags ?? []);
   const [tagInput, setTagInput] = useState("");
-  const [taskPhotos, setTaskPhotos] = useState<string[]>(
-    initialPhotoUrls ?? extractPhotoUrls(task?.notes ?? null)
-  );
-  const [addingPhoto, setAddingPhoto] = useState(false);
+  const [completionPhotos] = useState(() => parseTaskNotes(task?.notes).afterPhotos);
+  const attachments = useRef(parseTaskNotes(task?.notes));
+  const touched = useRef(new Set<keyof TaskDraft>());
+  const pendingUploads = useRef(0);
+  const mutationInFlight = useRef(false);
+  const appliedAIRevision = useRef<number | null>(null);
+  const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const busy = saving || uploadCount > 0;
+
+  useEffect(() => () => { if (deleteTimer.current) clearTimeout(deleteTimer.current); }, []);
 
   useEffect(() => {
-    if (initialPhotoUrls && initialPhotoUrls.length > 0) {
-      setTaskPhotos(initialPhotoUrls);
+    if (!aiUpdate || appliedAIRevision.current === aiUpdate.revision) return;
+    appliedAIRevision.current = aiUpdate.revision;
+    if (aiUpdate.analysis) attachments.current.analysis = JSON.stringify(aiUpdate.analysis);
+    // These fields arrive only after the user explicitly chooses Apply in the analysis panel.
+    if (aiUpdate.costEstimate !== undefined || aiUpdate.workMode !== undefined) {
+      if (aiUpdate.costEstimate !== undefined) touched.current.add("estimate");
+      if (aiUpdate.workMode !== undefined) touched.current.add("workMode");
+      setDraft((previous) => ({
+        ...previous,
+        ...(aiUpdate.costEstimate !== undefined ? { estimate: String(aiUpdate.costEstimate) } : {}),
+        ...(aiUpdate.workMode !== undefined ? { workMode: aiUpdate.workMode } : {}),
+      }));
     }
-  }, [initialPhotoUrls]);
+  }, [aiUpdate]);
 
-  async function addTaskPhoto(file: File) {
-    setAddingPhoto(true);
+  function update<K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) {
+    touched.current.add(key);
+    setDraft((previous) => ({ ...previous, [key]: value }));
+  }
+
+  function finishNavigation() {
+    const destination = safeReturnTo(returnTo);
+    if (destination) router.push(destination);
+    else if (window.history.length > 1 && document.referrer.startsWith(window.location.origin)) router.back();
+    else router.push("/");
+    router.refresh();
+  }
+
+  async function addPhoto(file: File, after = false) {
+    pendingUploads.current += 1;
+    setUploadCount(pendingUploads.current);
+    setError(null);
+    setPhotoMessage(null);
     try {
-      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-      const formData = new FormData();
-      formData.append("image", file);
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        headers: secret ? { "x-app-secret": secret } : {},
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
-      setTaskPhotos((prev) => [...prev, data.url]);
-    } catch {
-      setError("Photo upload failed.");
+      const context = draft.notes.trim() || draft.name.trim();
+      const result = await uploadImage(file, mode === "create" && !after ? { analysis: "task", context } : undefined);
+      if (after) setAfterPhotoUrl(result.url);
+      else {
+        setDraft((previous) => {
+          const withPhoto = { ...previous, photos: [...new Set([...previous.photos, result.url])] };
+          return result.classification && typeof result.classification === "object" && "task" in result.classification
+            ? mergePhotoSuggestions(withPhoto, result.classification as PhotoClassification, touched.current)
+            : withPhoto;
+        });
+      }
+      if (result.analysisError) {
+        setAnalysisRetry({ url: result.url, context });
+        setPhotoMessage("Photo attached. Suggestions weren’t available; you can still save your task.");
+      }
+      else if (result.classification) setPhotoMessage("Photo attached. Suggestions filled empty details; your entries were kept.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Photo upload failed. Please select the photo to try again.");
     } finally {
-      setAddingPhoto(false);
+      pendingUploads.current -= 1;
+      setUploadCount(pendingUploads.current);
     }
   }
 
-  function buildNotesWithPhotos(): string {
-    const baseNotes = notes.split("\n\nPhotos:")[0].split("\nAfter photo:")[0].split("\n\nAI Analysis:\n")[0].trim();
-    let result = baseNotes;
-    if (taskPhotos.length > 0) result += `\n\nPhotos:\n${taskPhotos.join("\n")}`;
-    // Preserve existing AI Analysis from original notes
-    const raw = task?.notes ?? "";
-    const aiIdx = raw.indexOf("\n\nAI Analysis:\n");
-    if (aiIdx !== -1) result += raw.slice(aiIdx);
-    return result.trim();
+  async function retryPhotoAnalysis() {
+    if (!analysisRetry || mutationInFlight.current || pendingUploads.current) return;
+    pendingUploads.current += 1;
+    setUploadCount(pendingUploads.current);
+    setError(null);
+    try {
+      const result = await analyzeUploadedImage(analysisRetry.url, "task", analysisRetry.context);
+      if (!result || typeof result !== "object" || !("task" in result)) throw new Error("Suggestions weren’t available. Your attached photo is safe.");
+      setDraft((previous) => mergePhotoSuggestions(previous, result as PhotoClassification, touched.current));
+      setAnalysisRetry(null);
+      setPhotoMessage("Suggestions filled empty details; your entries were kept.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Suggestions weren’t available. You can still save your task.");
+    } finally {
+      pendingUploads.current -= 1;
+      setUploadCount(pendingUploads.current);
+    }
   }
 
-  function toggleType(t: TaskType) {
-    setTypes((prev) =>
-      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
-    );
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-
+  async function saveTask(complete = false) {
+    if (mutationInFlight.current) return;
+    if (pendingUploads.current) {
+      setError("Wait for your photos to finish uploading, then save.");
+      return;
+    }
+    const validation = validateTaskDraft(draft);
+    if (validation) { setError(validation); return; }
+    mutationInFlight.current = true;
     setSaving(true);
     setError(null);
-
     try {
-      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-      const headers: HeadersInit = {
-        "Content-Type": "application/json",
-        ...(secret ? { "x-app-secret": secret } : {}),
-      };
-
-      if (mode === "create") {
-        const body: CreateTaskInput = {
-          task: name.trim(),
-          ...(status !== "Not Started" ? { status } : {}),
-          ...(priority ? { priority } : {}),
-          ...(area ? { area } : {}),
-          ...(subLocation ? { subLocation } : {}),
-          ...(types.length > 0 ? { type: types } : {}),
-          ...(frequency ? { frequency } : {}),
-          ...(dueDateStart ? { dueDate: { start: dueDateStart, ...(dueDateEnd ? { end: dueDateEnd } : {}) } } : {}),
-          ...(contractorVendor ? { contractorVendor } : {}),
-          ...(costEstimate ? { costEstimate: parseFloat(costEstimate) } : {}),
-          ...(() => { const n = buildNotesWithPhotos(); return n ? { notes: n } : {}; })(),
-          ...(tags.length > 0 ? { tags } : {}),
-          ...(taskWorkMode ? { workMode: taskWorkMode } : {}),
-        };
-        await fetch("/api/tasks", {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
+      const status = complete || recurrencePending ? "Completed" : draft.status;
+      const body = draftUpdate(draft, attachments.current, status, status === "Completed" ? afterPhotoUrl : null);
+      if (mode === "edit") {
+        if (!task?.id) throw new Error("This task could not be identified. Please reopen it and try again.");
+        if (status === "Completed" && task.status !== "Completed" && !draft.completedDate) body.dateCompleted = { start: localToday() };
+        const data = await requestJson<{ nextOccurrence?: Task }>(`/api/tasks/${task.id}`, {
+          method: "PATCH", headers: taskRequestHeaders(), body: JSON.stringify(body),
         });
+        if (complete || recurrencePending) {
+          showToast(data?.nextOccurrence ? `Completed. Next occurrence planned for ${data.nextOccurrence.dueDate?.start ?? "later"}.` : "Task completed!", "success");
+        } else showToast("Changes saved", "success");
       } else {
-        const body: UpdateTaskInput = {
-          task: name.trim(),
-          status,
-          priority: priority || undefined,
-          area: area || undefined,
-          subLocation: subLocation || undefined,
-          type: types,
-          frequency: frequency || undefined,
-          dueDate: dueDateStart ? { start: dueDateStart, ...(dueDateEnd ? { end: dueDateEnd } : {}) } : null,
-          contractorVendor: contractorVendor || undefined,
-          costEstimate: costEstimate ? parseFloat(costEstimate) : undefined,
-          actualCost: actualCost ? parseFloat(actualCost) : undefined,
-          notes: buildNotesWithPhotos() || undefined,
-          tags,
-          workMode: taskWorkMode || undefined,
-          ...(status === "Completed" && !task?.dateCompleted
-            ? { dateCompleted: { start: new Date().toISOString().split("T")[0] } }
-            : {}),
-        };
-        await fetch(`/api/tasks/${task!.id}`, {
-          method: "PATCH",
-          headers,
-          body: JSON.stringify(body),
-        });
+        // Null explicitly clears fields on edit; new tasks simply omit unused optional values.
+        const create = Object.fromEntries(Object.entries(body).filter(([, value]) => value !== null)) as CreateTaskInput;
+        await requestJson("/api/tasks", { method: "POST", headers: taskRequestHeaders(), body: JSON.stringify(create) });
+        showToast("Task saved", "success");
       }
-
-      router.push("/");
-      router.refresh();
-    } catch {
-      setError("Failed to save task. Please try again.");
+      finishNavigation();
+    } catch (cause) {
+      if (cause instanceof RequestError && task?.id) {
+        const recovered = recoverPendingCompletion(draft, cause.body, task.id);
+        if (recovered) {
+          setDraft((previous) => recoverPendingCompletion(previous, cause.body, task.id!) ?? previous);
+          setRecurrencePending(true);
+          setShowCompletePhoto(false);
+        }
+      }
+      setError(cause instanceof Error ? cause.message : "Couldn’t save your task. Your entries are still here; please try again.");
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   }
 
-  async function uploadAfterPhoto(file: File): Promise<void> {
-    setUploadingPhoto(true);
-    try {
-      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-      const formData = new FormData();
-      formData.append("image", file);
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        headers: secret ? { "x-app-secret": secret } : {},
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
-      setAfterPhotoUrl(data.url);
-    } catch {
-      setError("Photo upload failed.");
-    } finally {
-      setUploadingPhoto(false);
-    }
-  }
-
-  async function handleMarkComplete(photoUrl?: string | null) {
-    if (!task) return;
-    setSaving(true);
-    try {
-      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-      const updatedNotes = photoUrl
-        ? `${notes || ""}\n\nAfter photo: ${photoUrl}`.trim()
-        : undefined;
-      const body: Record<string, unknown> = {
-        status: "Completed" as Status,
-        dateCompleted: { start: new Date().toISOString().split("T")[0] },
-      };
-      if (updatedNotes) body.notes = updatedNotes;
-      const res = await fetch(`/api/tasks/${task.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          ...(secret ? { "x-app-secret": secret } : {}),
-        },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.nextOccurrence) {
-        const next = data.nextOccurrence;
-        showToast(`Next occurrence scheduled for ${next.dueDate?.start ?? "soon"}`, "info");
-      } else {
-        showToast("Task completed!", "success");
-      }
-      router.push("/");
-      router.refresh();
-    } catch {
-      setError("Failed to update task.");
-    } finally {
-      setSaving(false);
-    }
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    void saveTask();
   }
 
   async function handleDelete() {
-    if (!task) return;
+    if (!task?.id || mutationInFlight.current || pendingUploads.current) return;
     if (!confirmDelete) {
       setConfirmDelete(true);
-      setTimeout(() => setConfirmDelete(false), 3000);
+      deleteTimer.current = setTimeout(() => setConfirmDelete(false), 5000);
       return;
     }
+    mutationInFlight.current = true;
     setSaving(true);
+    setError(null);
     try {
-      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-      await fetch(`/api/tasks/${task.id}`, {
-        method: "DELETE",
-        headers: secret ? { "x-app-secret": secret } : {},
-      });
-      router.push("/");
-      router.refresh();
-    } catch {
-      setError("Failed to delete task.");
+      await requestJson(`/api/tasks/${task.id}`, { method: "DELETE", headers: taskRequestHeaders() });
+      showToast("Task deleted", "success");
+      finishNavigation();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Couldn’t delete your task. Please try again.");
+      setConfirmDelete(false);
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   }
 
+  function addTag() {
+    const value = tagInput.trim().replace(/,/g, "");
+    if (value && !draft.tags.includes(value)) update("tags", [...draft.tags, value]);
+    setTagInput("");
+  }
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6 px-5 pb-8 animate-fade-in">
-      {error && (
-        <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-xl">
-          {error}
-        </div>
-      )}
-
-      {/* Task name */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Task name *
-        </label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g., Fix leaky kitchen faucet"
-          required
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-shadow"
-        />
-      </div>
-
-      {/* Status (edit only) */}
-      {mode === "edit" && (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5 px-5 pb-4" aria-busy={saving}>
+      <fieldset disabled={saving} className="contents">
         <div>
-          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-            Status
-          </label>
-          <div className="grid grid-cols-2 gap-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl p-1">
-            {STATUSES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatus(s)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  status === s
-                    ? "bg-white dark:bg-neutral-700 text-neutral-950 dark:text-neutral-50 shadow-sm"
-                    : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
+          <label htmlFor="task-name" className={labelClass}>What needs doing?</label>
+          <input id="task-name" name="task" type="text" value={draft.name} onChange={(e) => update("name", e.target.value)} placeholder="e.g., Put mulch around the garden" required maxLength={500} className={inputClass} />
         </div>
-      )}
 
-      {/* Priority */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Priority
-        </label>
-        <div className="flex gap-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl p-1">
-          {PRIORITIES.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setPriority(priority === p ? "" : p)}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                priority === p
-                  ? p === "High"
-                    ? "bg-red-50 text-red-700 shadow-sm"
-                    : p === "Medium"
-                      ? "bg-amber-50 text-amber-700 shadow-sm"
-                      : "bg-emerald-50 text-emerald-700 shadow-sm"
-                  : "text-neutral-500 hover:text-neutral-700"
-              }`}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Work Mode */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Work Mode
-        </label>
-        <div className="flex gap-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl p-1">
-          {(["DIY", "Contractor"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setTaskWorkMode(taskWorkMode === m ? "" : m)}
-              className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                taskWorkMode === m
-                  ? m === "DIY"
-                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 shadow-sm"
-                    : "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 shadow-sm"
-                  : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
-              }`}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Area + Sub-location side by side */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-            Area
-          </label>
-          <select
-            value={area}
-            onChange={(e) => setArea(e.target.value as Area | "")}
-            className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-          >
-            <option value="">Select area...</option>
-            {AREAS.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-            Sub-location
-          </label>
-          <input
-            type="text"
-            value={subLocation}
-            onChange={(e) => setSubLocation(e.target.value)}
-            placeholder="e.g., master bath"
-            className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-          />
-        </div>
-      </div>
-
-      {/* Type */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Type
-        </label>
-        <select
-          value={types[0] || ""}
-          onChange={(e) => {
-            const val = e.target.value as TaskType | "";
-            setTypes(val ? [val] : []);
-          }}
-          className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-        >
-          <option value="">Select type...</option>
-          {TASK_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Tags */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Tags
-        </label>
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {tags.map((tag) => (
-            <span
-              key={tag}
-              className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 rounded-md text-xs font-medium"
-            >
-              {tag}
-              <button type="button" onClick={() => setTags((prev) => prev.filter((t) => t !== tag))} className="hover:text-red-500">
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === ",") {
-                e.preventDefault();
-                const val = tagInput.trim().replace(/,/g, "");
-                if (val && !tags.includes(val)) setTags((prev) => [...prev, val]);
-                setTagInput("");
-              }
-            }}
-            placeholder="Type and press Enter..."
-            className="flex-1 px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              const val = tagInput.trim().replace(/,/g, "");
-              if (val && !tags.includes(val)) setTags((prev) => [...prev, val]);
-              setTagInput("");
-            }}
-            disabled={!tagInput.trim()}
-            className="px-3 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium disabled:opacity-30 hover:bg-blue-700 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Frequency */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Frequency
-        </label>
-        <select
-          value={frequency}
-          onChange={(e) => setFrequency(e.target.value as Frequency | "")}
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 text-base bg-white dark:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-        >
-          <option value="">Select frequency...</option>
-          {FREQUENCIES.map((f) => (
-            <option key={f} value={f}>
-              {f}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Due Date */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Due Date
-        </label>
-        <div className="flex gap-2 items-center">
-          <input
-            type="date"
-            value={dueDateStart}
-            onChange={(e) => setDueDateStart(e.target.value)}
-            onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
-            readOnly={false}
-            className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow cursor-pointer"
-          />
-          <span className="text-neutral-300 text-sm">to</span>
-          <input
-            type="date"
-            value={dueDateEnd}
-            onChange={(e) => setDueDateEnd(e.target.value)}
-            onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
-            readOnly={false}
-            className="flex-1 px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow cursor-pointer"
-          />
-        </div>
-        <p className="text-xs text-neutral-400 mt-1.5">End date is optional (for date ranges)</p>
-      </div>
-
-      {/* Contractor + Cost side by side */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-            Contractor / Vendor
-          </label>
-          <input
-            type="text"
-            value={contractorVendor}
-            onChange={(e) => setContractorVendor(e.target.value)}
-            placeholder="e.g., Joe's Plumbing"
-            className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-            Cost Estimate ($)
-          </label>
-          <input
-            type="number"
-            value={costEstimate}
-            onChange={(e) => setCostEstimate(e.target.value)}
-            placeholder="0"
-            min="0"
-            step="0.01"
-            className="w-full px-3 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-          />
-        </div>
-      </div>
-
-      {/* Actual Cost (edit only) */}
-      {mode === "edit" && (
-        <div>
-          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-            Actual Cost ($)
-          </label>
-          <input
-            type="number"
-            value={actualCost}
-            onChange={(e) => setActualCost(e.target.value)}
-            placeholder="0"
-            min="0"
-            step="0.01"
-            className="w-full px-4 py-3 rounded-xl border border-neutral-200 text-base focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow"
-          />
-        </div>
-      )}
-
-      {/* Notes */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Notes
-        </label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Add notes, observations, or reminders..."
-          rows={3}
-          className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow resize-y"
-        />
-      </div>
-
-      {/* Photos */}
-      <div>
-        <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
-          Photos
-        </label>
-        <div className="flex gap-2 flex-wrap">
-          {taskPhotos.map((url, i) => (
-            <div key={i} className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={url} alt={`Photo ${i + 1}`} className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity" onClick={() => openLightbox(taskPhotos, i)} />
-              <button
-                type="button"
-                onClick={() => setTaskPhotos((prev) => prev.filter((_, j) => j !== i))}
-                className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center"
-              >
-                <X className="w-3 h-3" />
-              </button>
+        <section aria-label="Task photos" className="flex flex-col gap-3">
+          {!!draft.photos.length && (
+            <div className="flex flex-wrap gap-3">
+              {draft.photos.map((url, index) => (
+                <div key={url} className="relative">
+                  <button type="button" onClick={() => openLightbox(draft.photos, index)} aria-label={`Open task photo ${index + 1}`} className="block rounded-xl overflow-hidden focus-visible:ring-2 focus-visible:ring-blue-600">
+                    <TaskImage src={url} alt={`Task photo ${index + 1}`} width={88} height={88} sizes="88px" className="h-22 w-22 object-cover" />
+                  </button>
+                  <button type="button" onClick={() => update("photos", draft.photos.filter((photo) => photo !== url))} aria-label={`Remove task photo ${index + 1}`} className="absolute -top-2 -right-2 w-11 h-11 flex items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
-          <label className={`w-20 h-20 flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-neutral-300 dark:border-neutral-700 text-neutral-400 hover:border-blue-400 hover:text-blue-500 cursor-pointer transition-colors ${addingPhoto ? "opacity-50 pointer-events-none" : ""}`}>
-            {addingPhoto ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-            <span className="text-[9px] font-medium mt-0.5">{addingPhoto ? "..." : "Add"}</span>
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) addTaskPhoto(file);
-                e.target.value = "";
-              }}
-            />
-          </label>
-        </div>
-      </div>
+          )}
+          <div className="flex gap-2">
+            <label className={`${secondaryButton} flex-1 flex items-center justify-center gap-2 cursor-pointer ${busy ? "pointer-events-none opacity-50" : ""}`}>
+              <Camera className="w-4 h-4" aria-hidden="true" />Take photo
+              <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={busy} aria-label="Take a task photo" onChange={(e) => { const file = e.target.files?.[0]; if (file) void addPhoto(file); e.target.value = ""; }} />
+            </label>
+            <label className={`${secondaryButton} flex-1 flex items-center justify-center gap-2 cursor-pointer ${busy ? "pointer-events-none opacity-50" : ""}`}>
+              <Plus className="w-4 h-4" aria-hidden="true" />Add photo
+              <input type="file" accept="image/*" className="sr-only" disabled={busy} aria-label="Choose a task photo" onChange={(e) => { const file = e.target.files?.[0]; if (file) void addPhoto(file); e.target.value = ""; }} />
+            </label>
+          </div>
+          <div aria-live="polite" className="text-sm text-neutral-500 dark:text-neutral-400">
+            {uploadCount > 0 ? <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Preparing your photo…</span> : photoMessage}
+          </div>
+          {analysisRetry && draft.photos.includes(analysisRetry.url) && <button type="button" disabled={busy} onClick={() => void retryPhotoAnalysis()} className={`${secondaryButton} self-start`}>Retry photo suggestions</button>}
+        </section>
 
-      {/* Action buttons */}
-      <div className="flex flex-col gap-2.5 pt-2">
-        <button
-          type="submit"
-          disabled={saving || !name.trim()}
-          className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold text-base disabled:opacity-50 hover:bg-blue-700 active:scale-[0.99] transition-all"
-        >
-          {saving ? "Saving..." : mode === "create" ? "Create Task" : "Save Changes"}
-        </button>
-
-        {mode === "edit" && task?.status !== "Completed" && !showCompletePhoto && (
-          <button
-            type="button"
-            onClick={() => setShowCompletePhoto(true)}
-            disabled={saving}
-            className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold text-base disabled:opacity-50 hover:bg-emerald-700 active:scale-[0.99] transition-all"
-          >
-            Mark Complete
-          </button>
-        )}
-
-        {showCompletePhoto && (
-          <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl p-4 border border-emerald-200 dark:border-emerald-900 flex flex-col gap-3">
-            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Add an &quot;after&quot; photo? (optional)</p>
-            {afterPhotoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={afterPhotoUrl} alt="After photo" className="w-full max-h-48 object-contain rounded-lg cursor-pointer" onClick={() => openLightbox([afterPhotoUrl])} />
-            ) : (
-              <label className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-emerald-300 dark:border-emerald-700 cursor-pointer text-sm text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-950/40 transition-colors ${uploadingPhoto ? "opacity-50 pointer-events-none" : ""}`}>
-                {uploadingPhoto ? "Uploading..." : "Tap to take or select photo"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) uploadAfterPhoto(file);
-                  }}
-                />
+        <div>
+          <label htmlFor="task-plan-date" className={labelClass}>Plan for <span className="font-normal text-neutral-500">(optional)</span></label>
+          <div className="flex gap-2 items-center">
+            <input id="task-plan-date" type="date" value={draft.date} onChange={(e) => { update("date", e.target.value); if (!e.target.value) { update("endDate", ""); update("isDeadline", false); } }} className={`${inputClass} min-w-0 flex-1`} />
+            {draft.date && <button type="button" onClick={() => { update("date", ""); update("endDate", ""); update("isDeadline", false); }} className={secondaryButton}>Clear</button>}
+          </div>
+          <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">A date to aim for. It’s fine if plans change.</p>
+          <details className="mt-2 group">
+            <summary className="flex items-center gap-1 min-h-11 cursor-pointer text-sm text-neutral-600 dark:text-neutral-400 list-none">Date options<ChevronDown className="w-4 h-4 group-open:rotate-180 transition-transform" /></summary>
+            <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 dark:border-neutral-700 p-3">
+              <label htmlFor="task-deadline" className="flex items-center gap-3 min-h-11 text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                <input id="task-deadline" type="checkbox" checked={draft.isDeadline && !!draft.date} disabled={!draft.date} onChange={(e) => update("isDeadline", e.target.checked)} className="h-5 w-5 accent-blue-600" />Firm deadline
               </label>
-            )}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => { setShowCompletePhoto(false); setAfterPhotoUrl(null); }}
-                className="flex-1 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-500 text-sm font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleMarkComplete(afterPhotoUrl)}
-                disabled={saving || uploadingPhoto}
-                className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50 active:scale-[0.98] transition-all"
-              >
-                {saving ? "Completing..." : afterPhotoUrl ? "Complete with photo" : "Complete without photo"}
-              </button>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">Only firm deadlines show overdue warnings.</p>
+              <label htmlFor="task-end-date" className={labelClass}>End date (optional range)</label>
+              <input id="task-end-date" type="date" value={draft.endDate} min={draft.date || undefined} disabled={!draft.date} onChange={(e) => update("endDate", e.target.value)} className={inputClass} />
             </div>
+          </details>
+        </div>
+
+        <details className="rounded-2xl border border-neutral-200 dark:border-neutral-700 group">
+          <summary className="flex justify-between items-center min-h-14 px-4 py-3 cursor-pointer text-sm font-semibold text-neutral-800 dark:text-neutral-200 list-none">More details<ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" /></summary>
+          <div className="px-4 pb-4 flex flex-col gap-5">
+            {mode === "edit" && <div>
+              <label htmlFor="task-status" className={labelClass}>Status</label>
+              <select id="task-status" value={draft.status} disabled={recurrencePending} onChange={(e) => update("status", e.target.value as Status)} className={inputClass}>{STATUSES.map((value) => <option key={value}>{value}</option>)}</select>
+            </div>}
+            <fieldset><legend className={labelClass}>Priority (optional)</legend><div className="flex gap-1 rounded-xl bg-neutral-100 dark:bg-neutral-800 p-1">{PRIORITIES.map((value) => <button type="button" key={value} aria-pressed={draft.priority === value} onClick={() => update("priority", draft.priority === value ? "" : value as Priority)} className={`flex-1 min-h-11 rounded-lg text-sm font-medium ${draft.priority === value ? "bg-white dark:bg-neutral-700 text-neutral-950 dark:text-neutral-50" : "text-neutral-500 dark:text-neutral-400"}`}>{value}</button>)}</div></fieldset>
+            <fieldset><legend className={labelClass}>Who will do it? (optional)</legend><div className="flex gap-1 rounded-xl bg-neutral-100 dark:bg-neutral-800 p-1">{(["DIY", "Contractor"] as const).map((value) => <button type="button" key={value} aria-pressed={draft.workMode === value} onClick={() => update("workMode", draft.workMode === value ? "" : value)} className={`flex-1 min-h-11 rounded-lg text-sm font-medium ${draft.workMode === value ? "bg-white dark:bg-neutral-700 text-neutral-950 dark:text-neutral-50" : "text-neutral-500 dark:text-neutral-400"}`}>{value}</button>)}</div></fieldset>
+            <div><label htmlFor="task-area" className={labelClass}>Area</label><select id="task-area" value={draft.area} onChange={(e) => update("area", e.target.value as Area | "")} className={inputClass}><option value="">No area selected</option>{AREAS.map((value) => <option key={value}>{value}</option>)}</select></div>
+            <div><label htmlFor="task-sub-location" className={labelClass}>Location detail</label><input id="task-sub-location" value={draft.subLocation} onChange={(e) => update("subLocation", e.target.value)} placeholder="e.g., Front porch" className={inputClass} /></div>
+            <fieldset><legend className={labelClass}>Type</legend><div className="flex flex-wrap gap-2">{TASK_TYPES.map((value) => <button key={value} type="button" aria-pressed={draft.types.includes(value)} onClick={() => update("types", draft.types.includes(value) ? draft.types.filter((type) => type !== value) : [...draft.types, value])} className={`${secondaryButton} ${draft.types.includes(value) ? "bg-neutral-100 dark:bg-neutral-700" : ""}`}>{value}</button>)}</div></fieldset>
+            <div>
+              <label htmlFor="task-tags" className={labelClass}>Tags</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">{draft.tags.map((tag) => <button key={tag} type="button" onClick={() => update("tags", draft.tags.filter((value) => value !== tag))} aria-label={`Remove tag ${tag}`} className={`${secondaryButton} flex items-center gap-2`}>{tag}<X className="w-3.5 h-3.5" /></button>)}</div>
+              <div className="flex gap-2"><input id="task-tags" value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(); } }} placeholder="Add a tag" className={`${inputClass} min-w-0 flex-1`} /><button type="button" onClick={addTag} disabled={!tagInput.trim()} aria-label="Add tag" className={secondaryButton}><Plus className="w-5 h-5" /></button></div>
+            </div>
+            <div><label htmlFor="task-frequency" className={labelClass}>Repeat</label><select id="task-frequency" value={draft.frequency} onChange={(e) => update("frequency", e.target.value as Frequency | "")} className={inputClass}><option value="">Doesn’t repeat</option>{FREQUENCIES.map((value) => <option key={value}>{value}</option>)}</select></div>
+            <div><label htmlFor="task-contractor" className={labelClass}>Contractor / vendor</label><input id="task-contractor" value={draft.contractor} onChange={(e) => update("contractor", e.target.value)} placeholder="Name or company" className={inputClass} /></div>
+            <div><label htmlFor="task-estimate" className={labelClass}>Estimated cost ($)</label><input id="task-estimate" type="number" inputMode="decimal" value={draft.estimate} onChange={(e) => update("estimate", e.target.value)} placeholder="Optional" min="0" step="0.01" className={inputClass} /></div>
+            {mode === "edit" && <div><label htmlFor="task-actual" className={labelClass}>Actual cost ($)</label><input id="task-actual" type="number" inputMode="decimal" value={draft.actual} onChange={(e) => update("actual", e.target.value)} placeholder="Optional" min="0" step="0.01" className={inputClass} /></div>}
+            {mode === "edit" && (draft.status === "Completed" || task?.status === "Completed") && <div><label htmlFor="task-completed-date" className={labelClass}>Completed on (optional)</label><input id="task-completed-date" type="date" value={draft.completedDate} onChange={(e) => update("completedDate", e.target.value)} className={inputClass} /><p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">Leave blank if the completion date is unknown.</p></div>}
+            <div><label htmlFor="task-notes" className={labelClass}>Notes</label><textarea id="task-notes" value={draft.notes} onChange={(e) => update("notes", e.target.value)} placeholder="Anything worth remembering…" rows={4} className={`${inputClass} resize-y`} /></div>
+            {completionPhotos.length > 0 && <div><p className={labelClass}>Completion photos</p><div className="flex flex-wrap gap-2">{completionPhotos.map((url, index) => <button key={url} type="button" aria-label={`Open completion photo ${index + 1}`} onClick={() => openLightbox(completionPhotos, index)}><TaskImage src={url} alt={`Completion photo ${index + 1}`} width={88} height={88} sizes="88px" className="h-22 w-22 rounded-xl object-cover" /></button>)}</div></div>}
+            {mode === "edit" && <button type="button" onClick={handleDelete} disabled={busy} className="min-h-11 text-sm font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-50">{confirmDelete ? "Tap again to permanently delete" : "Delete task"}</button>}
+          </div>
+        </details>
+
+        {mode === "edit" && draft.status !== "Completed" && !recurrencePending && (
+          <div className="flex flex-col gap-3">
+            {!showCompletePhoto ? <button type="button" onClick={() => setShowCompletePhoto(true)} disabled={busy} className={secondaryButton}>Mark complete</button> : <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 p-4">
+              <p className="text-sm font-medium">Add a completion photo? (optional)</p>
+              {afterPhotoUrl ? <button type="button" onClick={() => openLightbox([afterPhotoUrl])} aria-label="Open new completion photo"><TaskImage src={afterPhotoUrl} alt="New completion photo" width={360} height={200} sizes="(max-width: 512px) 80vw, 360px" className="w-full max-h-48 object-contain rounded-xl" /></button> : <label className={`${secondaryButton} flex items-center justify-center gap-2 cursor-pointer ${busy ? "opacity-50 pointer-events-none" : ""}`}><Camera className="w-4 h-4" />Add photo<input type="file" accept="image/*" capture="environment" className="sr-only" disabled={busy} aria-label="Add completion photo" onChange={(e) => { const file = e.target.files?.[0]; if (file) void addPhoto(file, true); e.target.value = ""; }} /></label>}
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">Completing also saves your current edits.</p>
+              <div className="flex gap-2"><button type="button" disabled={busy} onClick={() => setShowCompletePhoto(false)} className={`${secondaryButton} flex-1`}>Cancel</button><button type="button" disabled={busy || !draft.name.trim()} onClick={() => void saveTask(true)} className="min-h-11 flex-1 px-3 py-3 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50">{saving ? "Saving…" : "Complete task"}</button></div>
+            </div>}
           </div>
         )}
+      </fieldset>
 
-        {mode === "edit" && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={saving}
-            className={`w-full py-3 rounded-xl font-medium text-base disabled:opacity-50 transition-all ${
-              confirmDelete
-                ? "bg-red-600 text-white hover:bg-red-700"
-                : "text-red-500 hover:bg-red-50 active:bg-red-100"
-            }`}
-          >
-            {confirmDelete ? "Tap again to delete" : "Delete Task"}
-          </button>
-        )}
+      <fieldset disabled={busy} className="contents">{children}</fieldset>
+
+      <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] -mx-5 px-5 py-3 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-lg border-t border-neutral-200 dark:border-neutral-800 z-30">
+        {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300 mb-3">{error}</p>}
+        <button type="submit" disabled={busy || !draft.name.trim()} className="w-full min-h-12 py-3 rounded-xl bg-blue-600 text-white font-semibold text-base disabled:opacity-50 hover:bg-blue-700 transition-colors">{saving ? "Saving…" : uploadCount ? "Waiting for photo…" : recurrencePending ? "Retry scheduling" : mode === "create" ? "Save task" : "Save changes"}</button>
       </div>
     </form>
   );
+}
+
+function localToday(): string {
+  return householdDateKey();
 }

@@ -2,217 +2,191 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { format, isPast, isWithinInterval, addDays, isToday, isTomorrow, isYesterday, differenceInDays } from "date-fns";
-import { ChevronRight, Calendar, DollarSign, MapPin, Repeat, Wrench, HardHat } from "lucide-react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { format, parseISO } from "date-fns";
+import { ChevronRight, Calendar, MapPin, Plus, Repeat } from "lucide-react";
 import type { Task, Priority, Status } from "@/lib/types";
 import { PRIORITIES, STATUSES } from "@/lib/types";
+import {
+  addToHomePlan,
+  isOverdueDeadline,
+  MAX_PLAN_TASKS,
+  readHomePlan,
+  saveHomePlan,
+  taskDateKey,
+} from "@/lib/home-plan";
 import { showToast } from "@/components/toast";
-
-const PRIORITY_COLORS: Record<Priority, string> = {
-  High: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-800",
-  Medium: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800",
-  Low: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800",
-};
-
-const STATUS_COLORS: Record<Status, string> = {
-  "Not Started": "bg-neutral-100 text-neutral-600 border-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:border-neutral-700",
-  "In Progress": "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400 dark:border-blue-800",
-  "On Hold": "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-400 dark:border-orange-800",
-  Completed: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800",
-};
-
-function formatRelativeDate(date: Date): string {
-  const now = new Date();
-  if (isToday(date)) return "Today";
-  if (isTomorrow(date)) return "Tomorrow";
-  if (isYesterday(date)) return "Yesterday";
-  const diff = differenceInDays(date, now);
-  if (diff > 0 && diff <= 7) return `in ${diff} days`;
-  if (diff < 0 && diff >= -7) return `${Math.abs(diff)} days ago`;
-  return format(date, "MMM d");
-}
-
-function DueDateLabel({ dueDate, status }: { dueDate: Task["dueDate"]; status: string }) {
-  if (!dueDate) return null;
-  const date = new Date(dueDate.start + "T00:00:00");
-  const now = new Date();
-  const overdue = status !== "Completed" && isPast(date) && dueDate.start < format(now, "yyyy-MM-dd");
-  const dueSoon = isWithinInterval(date, { start: now, end: addDays(now, 3) });
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1 text-xs ${
-        overdue
-          ? "text-red-600 font-semibold"
-          : dueSoon
-            ? "text-orange-600"
-            : "text-neutral-500"
-      }`}
-    >
-      <Calendar className="w-3 h-3" />
-      {overdue ? "Overdue: " : ""}
-      {formatRelativeDate(date)}
-      {dueDate.end ? ` – ${format(new Date(dueDate.end + "T00:00:00"), "MMM d")}` : ""}
-    </span>
-  );
-}
-
-function InlineSelect<T extends string>({
-  value,
-  options,
-  colors,
-  onChange,
-}: {
-  value: T | null;
-  options: readonly T[];
-  colors: Record<string, string>;
-  onChange: (val: T) => void;
-}) {
-  return (
-    <select
-      value={value || ""}
-      onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
-      onChange={(e) => {
-        e.stopPropagation();
-        onChange(e.target.value as T);
-      }}
-      className={`appearance-none cursor-pointer px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wide border pr-5 bg-[length:12px] bg-[right_2px_center] bg-no-repeat ${
-        value ? colors[value] : "bg-neutral-100 text-neutral-500 border-neutral-200"
-      }`}
-      style={{
-        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23999'%3E%3Cpath d='M4.5 6l3.5 4 3.5-4z'/%3E%3C/svg%3E")`,
-      }}
-    >
-      {!value && <option value="">—</option>}
-      {options.map((o) => (
-        <option key={o} value={o}>{o}</option>
-      ))}
-    </select>
-  );
-}
 
 export function TaskCard({ task }: { task: Task }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const returnTo = `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ""}`;
+  const taskHref = `/task/${task.id}?returnTo=${encodeURIComponent(returnTo)}`;
   const [priority, setPriority] = useState<Priority | null>(task.priority);
   const [status, setStatus] = useState<Status>(task.status);
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState("");
+  const overdue = isOverdueDeadline({ ...task, status });
+  const date = taskDateKey(task);
 
-  async function updateField(field: string, value: string) {
-    const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-    const res = await fetch(`/api/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        ...(secret ? { "x-app-secret": secret } : {}),
-      },
-      body: JSON.stringify({ [field]: value }),
-    });
-    if (!res.ok) {
-      showToast("Failed to update task", "error");
-      return null;
+  async function updateField(field: "priority" | "status", value: string) {
+    const previousPriority = priority;
+    const previousStatus = status;
+    if (field === "priority") setPriority(value as Priority);
+    else setStatus(value as Status);
+    setPending(true);
+    setMessage("Saving…");
+    try {
+      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(secret ? { "x-app-secret": secret } : {}),
+        },
+        body: JSON.stringify({ [field]: value }),
+      });
+      const result = (await response.json().catch(() => null)) as {
+        saved?: boolean;
+        error?: string;
+      } | null;
+      if (!response.ok && result?.saved) {
+        const notice =
+          result.error ||
+          "Task saved, but the next repeat needs retrying. Open the task to finish scheduling.";
+        setMessage(notice);
+        showToast(notice, "error");
+        router.refresh();
+        return;
+      }
+      if (!response.ok) throw new Error("Update was not saved");
+      setMessage("Saved.");
+      router.refresh();
+    } catch {
+      setPriority(previousPriority);
+      setStatus(previousStatus);
+      setMessage(
+        "Could not save. Your previous value has been restored. Please try again.",
+      );
+      showToast("Could not save task. Please try again.", "error");
+    } finally {
+      setPending(false);
     }
-    const data = await res.json();
-    router.refresh();
-    return data;
   }
 
-  function handlePriorityChange(val: Priority) {
-    setPriority(val);
-    updateField("priority", val);
-  }
-
-  async function handleStatusChange(val: Status) {
-    setStatus(val);
-    const data = await updateField("status", val);
-    if (data?.nextOccurrence) {
-      showToast("Completed! Next occurrence scheduled.", "info");
+  function addToPlan() {
+    const plan = readHomePlan();
+    if (plan.selectedIds.includes(task.id)) {
+      showToast("Already in your plan", "info");
+      return;
+    }
+    if (plan.selectedIds.length >= MAX_PLAN_TASKS) {
+      showToast(
+        "Your plan has three tasks. Remove one before adding another.",
+        "info",
+      );
+      return;
+    }
+    try {
+      saveHomePlan(addToHomePlan(plan, task.id));
+      showToast("Added to your plan", "success");
+    } catch {
+      showToast(
+        "Could not save your plan on this device. Please try again.",
+        "error",
+      );
     }
   }
 
   return (
-    <div className={`group bg-white dark:bg-neutral-900 rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 dark:shadow-neutral-900/50 p-5 transition-all duration-200 ${status === "In Progress" ? "border-l-4 border-l-blue-500" : ""}`}>
-      {/* Dropdowns — OUTSIDE the Link so taps don't trigger navigation */}
-      <div className="flex items-center gap-2 mb-2">
-        <InlineSelect
-          value={priority}
-          options={PRIORITIES}
-          colors={PRIORITY_COLORS}
-          onChange={handlePriorityChange}
-        />
-        <InlineSelect
-          value={status}
-          options={STATUSES}
-          colors={STATUS_COLORS}
-          onChange={handleStatusChange}
-        />
-      </div>
-
-      <Link
-        href={`/task/${task.id}`}
-        className="block active:scale-[0.99] transition-transform"
-      >
+    <article
+      aria-busy={pending}
+      className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+    >
+      <Link href={taskHref} className="group block rounded-lg py-1">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-[15px] font-semibold text-neutral-950 dark:text-neutral-50 truncate">{task.task}</h3>
-
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2">
-              {task.area && (
-                <span className="inline-flex items-center gap-1 text-xs text-neutral-500">
-                  <MapPin className="w-3 h-3" />
-                  {task.area}
-                  {task.subLocation ? ` · ${task.subLocation}` : ""}
-                </span>
-              )}
-              <DueDateLabel dueDate={task.dueDate} status={status} />
-              {task.frequency && task.frequency !== "One-time" && (
-                <span className="inline-flex items-center gap-1 text-xs text-neutral-400">
-                  <Repeat className="w-3 h-3" />
-                  {task.frequency}
-                </span>
-              )}
-              {task.costEstimate !== null && (
-                <span className="inline-flex items-center gap-1 text-xs text-neutral-500">
-                  <DollarSign className="w-3 h-3" />
-                  {task.costEstimate.toLocaleString()}
-                </span>
-              )}
-            </div>
-
-            {(task.type.length > 0 || task.tags.length > 0) && (
-              <div className="flex flex-wrap gap-1.5 mt-2.5">
-                {task.type.map((t) => (
-                  <span
-                    key={t}
-                    className="px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 rounded-md text-[11px] font-medium"
-                  >
-                    {t}
-                  </span>
-                ))}
-                {task.tags.map((t) => (
-                  <span
-                    key={t}
-                    className="px-2 py-0.5 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded-md text-[11px] font-medium"
-                  >
-                    {t}
-                  </span>
-                ))}
-                {task.workMode && (
-                  <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-medium ${
-                    task.workMode === "DIY"
-                      ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
-                      : "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
-                  }`}>
-                    {task.workMode === "DIY" ? <Wrench className="w-3 h-3" /> : <HardHat className="w-3 h-3" />}
-                    {task.workMode}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-neutral-500 flex-shrink-0 mt-1 transition-colors" />
+          <h3 className="min-w-0 flex-1 break-words text-base font-semibold leading-relaxed text-neutral-950 dark:text-neutral-50">
+            {task.task}
+          </h3>
+          <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-neutral-400" />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-neutral-500 dark:text-neutral-400">
+          {task.area && (
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="h-3.5 w-3.5" />
+              {task.area}
+            </span>
+          )}
+          {date && (
+            <span
+              className={`inline-flex items-center gap-1 ${overdue ? "font-medium text-red-600 dark:text-red-400" : ""}`}
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              {overdue
+                ? "Deadline passed: "
+                : task.isDeadline
+                  ? "Deadline: "
+                  : "Planned for "}
+              {format(parseISO(date), "MMM d, yyyy")}
+            </span>
+          )}
+          {task.frequency && task.frequency !== "One-time" && (
+            <span className="inline-flex items-center gap-1">
+              <Repeat className="h-3.5 w-3.5" />
+              {task.frequency}
+            </span>
+          )}
         </div>
       </Link>
-    </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <select
+          aria-label={`Priority for ${task.task}`}
+          value={priority || ""}
+          disabled={pending}
+          onChange={(event) => updateField("priority", event.target.value)}
+          className="min-h-11 max-w-full rounded-lg border border-neutral-200 bg-neutral-50 px-2 text-xs text-neutral-600 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+        >
+          <option value="" disabled>
+            Priority
+          </option>
+          {PRIORITIES.map((value) => (
+            <option key={value} value={value}>
+              {value} priority
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label={`Status for ${task.task}`}
+          value={status}
+          disabled={pending}
+          onChange={(event) => updateField("status", event.target.value)}
+          className="min-h-11 max-w-full rounded-lg border border-neutral-200 bg-neutral-50 px-2 text-xs text-neutral-600 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+        >
+          {STATUSES.map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+        {status !== "Completed" && (
+          <button
+            type="button"
+            onClick={addToPlan}
+            className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-medium text-blue-600 dark:text-blue-400"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add to plan
+          </button>
+        )}
+      </div>
+      <p
+        role="status"
+        aria-live="polite"
+        className="mt-1 text-xs text-neutral-500 dark:text-neutral-400"
+      >
+        {message}
+      </p>
+    </article>
   );
 }

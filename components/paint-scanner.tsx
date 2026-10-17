@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useId } from "react";
 import { Camera, Loader2, X, ScanLine } from "lucide-react";
 import type { PaintLabelScan } from "@/lib/ai";
 import { openLightbox } from "@/components/lightbox";
+import { TaskImage } from "@/components/task-image";
+import { analyzeUploadedImage, uploadImage } from "@/lib/image-client";
 
 interface PaintScannerProps {
   onScanned: (data: Record<string, string>) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
 // Map AI response fields to paint tracker schema field names
@@ -27,76 +30,75 @@ function mapScanToFormData(scan: PaintLabelScan, photoUrl?: string): Record<stri
   return data;
 }
 
-export function PaintScanner({ onScanned }: PaintScannerProps) {
+export function PaintScanner({ onScanned, onBusyChange }: PaintScannerProps) {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanned, setScanned] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const previewRef = useRef<string | null>(null);
+  const savedUrlRef = useRef<string | null>(null);
+  const busyRef = useRef(false);
+  const inputId = useId();
+  useEffect(() => () => { if (previewRef.current) URL.revokeObjectURL(previewRef.current); }, []);
+
+  function busy(value: boolean) {
+    busyRef.current = value;
+    setLoading(value);
+    onBusyChange?.(value);
+  }
+
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    setPreview(URL.createObjectURL(file));
-    setLoading(true);
+    if (!file || busyRef.current) return;
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = URL.createObjectURL(file);
+    setPreview(previewRef.current);
+    savedUrlRef.current = null;
+    busy(true);
     setError(null);
     setScanned(false);
-
     try {
-      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-      const headers: Record<string, string> = secret ? { "x-app-secret": secret } : {};
-
-      // Run AI scan and photo upload in parallel
-      const scanForm = new FormData();
-      scanForm.append("image", file);
-
-      const uploadForm = new FormData();
-      uploadForm.append("image", file);
-
-      const [scanRes, uploadRes] = await Promise.all([
-        fetch("/api/ai/classify-paint", {
-          method: "POST",
-          headers,
-          body: scanForm,
-        }),
-        fetch("/api/upload", {
-          method: "POST",
-          headers,
-          body: uploadForm,
-        }).catch(() => null), // Upload failure is non-critical
-      ]);
-
-      if (!scanRes.ok) throw new Error("Scan failed");
-
-      const result: PaintLabelScan = await scanRes.json();
-      let photoUrl: string | undefined;
-
-      if (uploadRes?.ok) {
-        const uploadData = await uploadRes.json();
-        photoUrl = uploadData.url;
-      } else if (uploadRes) {
-        // Show upload error but don't block — scan still works
-        try {
-          const errData = await uploadRes.json();
-          console.warn("Photo upload failed:", errData.error);
-          setError(`Photo didn't save: ${errData.error}. Label data was still captured.`);
-        } catch {
-          console.warn("Photo upload failed:", uploadRes.status);
-        }
+      const result = await uploadImage(file, { analysis: "paint" });
+      savedUrlRef.current = result.url;
+      setPreview(result.url);
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+      previewRef.current = null;
+      if (result.classification) {
+        onScanned(mapScanToFormData(result.classification as PaintLabelScan, result.url));
+        setScanned(true);
+      } else {
+        // Keep a successful attachment even when AI fails.
+        onScanned({ Photo: result.url });
       }
-
-      const mapped = mapScanToFormData(result, photoUrl);
-      onScanned(mapped);
-      setScanned(true);
-    } catch {
-      setError("Failed to read label. Try a clearer photo.");
+      setError(result.analysisError || null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Photo did not upload. Please try again.");
     } finally {
-      setLoading(false);
+      busy(false);
+      if (inputRef.current) inputRef.current.value = "";
     }
   }
 
+  async function retry() {
+    if (!savedUrlRef.current || busyRef.current) return;
+    busy(true);
+    setError(null);
+    try {
+      const result = await analyzeUploadedImage(savedUrlRef.current, "paint") as PaintLabelScan;
+      onScanned(mapScanToFormData(result, savedUrlRef.current));
+      setScanned(true);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Label could not be read. The photo remains attached.");
+    } finally { busy(false); }
+  }
+
   function reset() {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = null;
+    if (savedUrlRef.current) onScanned({ Photo: "" });
+    savedUrlRef.current = null;
     setPreview(null);
     setError(null);
     setScanned(false);
@@ -112,15 +114,18 @@ export function PaintScanner({ onScanned }: PaintScannerProps) {
         capture="environment"
         onChange={handleFile}
         className="hidden"
-        id="paint-scan-input"
+        id={inputId}
+        disabled={loading}
       />
 
       {preview ? (
         <div className="relative">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <TaskImage
             src={preview}
             alt="Paint label"
+            width={640}
+            height={480}
+            sizes="(max-width: 640px) 100vw, 640px"
             className="w-full h-48 object-cover rounded-2xl shadow-sm cursor-pointer"
             onClick={() => { if (!loading) openLightbox([preview]); }}
           />
@@ -141,20 +146,23 @@ export function PaintScanner({ onScanned }: PaintScannerProps) {
           )}
           {!loading && (
             <button
+              type="button"
+              aria-label="Clear paint label photo"
               onClick={reset}
               className="absolute top-2 right-2 bg-black/50 text-white rounded-lg p-1.5 hover:bg-black/70 transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
           )}
+          {error && savedUrlRef.current && !scanned && <button type="button" onClick={retry} disabled={loading} className="text-sm text-blue-600 mt-2 py-2">Retry reading label</button>}
           {error && (
-            <p className="text-sm text-red-600 mt-1">{error}</p>
+            <p role="alert" className="text-sm text-red-600 mt-1">{error}</p>
           )}
         </div>
       ) : (
         <div className="flex gap-2">
           <label
-            htmlFor="paint-scan-input"
+            htmlFor={inputId}
             className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-dashed border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:border-amber-400 hover:bg-amber-50/30 active:bg-amber-50 transition-all cursor-pointer"
           >
             <Camera className="w-5 h-5" />

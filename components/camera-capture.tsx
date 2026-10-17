@@ -1,167 +1,113 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useId } from "react";
 import { Camera, Loader2, X, Plus } from "lucide-react";
 import type { PhotoClassification } from "@/lib/ai";
+import { analyzeUploadedImage, uploadImage } from "@/lib/image-client";
 import { openLightbox } from "@/components/lightbox";
+import { TaskImage } from "@/components/task-image";
 
 interface CameraCaptureProps {
-  onClassified: (result: PhotoClassification, photoUrls: string[]) => void;
+  onClassified: (result: PhotoClassification | null, photoUrls: string[]) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function CameraCapture({ onClassified }: CameraCaptureProps) {
+export function CameraCapture({ onClassified, onBusyChange }: CameraCaptureProps) {
   const [loading, setLoading] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
-  const [previews, setPreviews] = useState<string[]>([]);
-  const [classified, setClassified] = useState(false);
+  const photosRef = useRef<string[]>([]);
+  const classifiedRef = useRef(false);
+  const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [contextText, setContextText] = useState("");
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const pendingRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
+  useEffect(() => () => { if (pendingRef.current) URL.revokeObjectURL(pendingRef.current); }, []);
 
-  async function uploadPhoto(file: File): Promise<string | null> {
-    const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-    const formData = new FormData();
-    formData.append("image", file);
-    const res = await fetch("/api/upload", {
-      method: "POST",
-      headers: secret ? { "x-app-secret": secret } : {},
-      body: formData,
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.url;
+  function busy(value: boolean) {
+    busyRef.current = value;
+    setLoading(value);
+    onBusyChange?.(value);
+  }
+
+  function publish(next: string[], result: PhotoClassification | null = null) {
+    photosRef.current = next;
+    setPhotos(next);
+    onClassified(result, next);
   }
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    const previewUrl = URL.createObjectURL(file);
-    setPreviews((prev) => [...prev, previewUrl]);
-    setLoading(true);
+    if (!file || busyRef.current) return;
+    busy(true);
     setError(null);
-
+    const preview = URL.createObjectURL(file);
+    pendingRef.current = preview;
+    setPendingPreview(preview);
     try {
-      const blobUrl = await uploadPhoto(file);
-      if (!blobUrl) throw new Error("Upload failed");
-
-      let newPhotos: string[] = [];
-      setPhotos((prev) => {
-        newPhotos = [...prev, blobUrl];
-        return newPhotos;
-      });
-
-      if (!classified) {
-        const classifyData = new FormData();
-        classifyData.append("image", file);
-        if (contextText.trim()) classifyData.append("context", contextText.trim());
-        const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-        const res = await fetch("/api/ai/classify", {
-          method: "POST",
-          headers: secret ? { "x-app-secret": secret } : {},
-          body: classifyData,
-        });
-        if (!res.ok) throw new Error("Classification failed");
-        const result: PhotoClassification = await res.json();
-        setClassified(true);
-        onClassified(result, newPhotos);
-      } else {
-        onClassified(null as unknown as PhotoClassification, newPhotos);
-      }
-    } catch {
-      setError("Failed to process photo. Try again.");
-      setPreviews((prev) => prev.filter((p) => p !== previewUrl));
+      const result = await uploadImage(file, { analysis: classifiedRef.current ? undefined : "task", context: contextText });
+      const classification = result.classification as PhotoClassification | undefined;
+      if (classification) classifiedRef.current = true;
+      publish([...photosRef.current, result.url], classification || null);
+      setError(result.analysisError || null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Photo did not upload. Please try again.");
     } finally {
-      setLoading(false);
+      URL.revokeObjectURL(preview);
+      pendingRef.current = null;
+      setPendingPreview(null);
+      busy(false);
       if (inputRef.current) inputRef.current.value = "";
     }
   }
 
+  async function retryAnalysis() {
+    if (!photosRef.current.length || busyRef.current) return;
+    busy(true);
+    setError(null);
+    try {
+      const result = await analyzeUploadedImage(photosRef.current[0], "task", contextText) as PhotoClassification;
+      classifiedRef.current = true;
+      publish(photosRef.current, result);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Suggestions failed. The photo is still attached.");
+    } finally { busy(false); }
+  }
+
   function removePhoto(index: number) {
-    setPreviews((prev) => prev.filter((_, i) => i !== index));
-    setPhotos((prev) => prev.filter((_, i) => i !== index));
-    if (photos.length <= 1) setClassified(false);
+    const next = photosRef.current.filter((_, i) => i !== index);
+    if (!next.length) classifiedRef.current = false;
+    publish(next);
+    setError(null);
   }
 
   function reset() {
-    setPreviews([]);
-    setPhotos([]);
-    setClassified(false);
+    classifiedRef.current = false;
+    publish([]);
     setError(null);
     if (inputRef.current) inputRef.current.value = "";
   }
 
   return (
     <div className="flex flex-col gap-3">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={handleFile}
-        className="hidden"
-        id="camera-input"
-      />
-
-      {/* Context input — helps AI understand the real situation */}
-      {!classified && (
-        <textarea
-          value={contextText}
-          onChange={(e) => setContextText(e.target.value)}
-          placeholder="Optional context (e.g., 'Roof was fixed, just need to paint the ceiling stain')"
-          rows={2}
-          className="w-full px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition-shadow resize-none"
-        />
-      )}
-
-      {previews.length > 0 ? (
-        <div className="flex flex-col gap-2">
-          <div className="flex gap-2 overflow-x-auto snap-x snap-mandatory">
-            {previews.map((url, i) => (
-              <div key={i} className="relative flex-shrink-0 snap-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt={`Photo ${i + 1}`} className="w-36 h-28 object-cover rounded-xl shadow-sm cursor-pointer hover:opacity-90 transition-opacity" onClick={() => openLightbox(previews, i)} />
-                <button
-                  onClick={() => removePhoto(i)}
-                  className="absolute top-1 right-1 bg-black/50 text-white rounded-lg p-1 hover:bg-black/70 transition-colors"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
-            <label
-              htmlFor="camera-input"
-              className="flex-shrink-0 w-36 h-28 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-neutral-300 dark:border-neutral-700 text-neutral-400 hover:border-blue-400 hover:text-blue-500 cursor-pointer transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              <span className="text-[10px] font-medium mt-1">Add more</span>
-            </label>
-          </div>
-          {loading && (
-            <div className="flex items-center gap-2 text-sm text-neutral-500">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              {classified ? "Uploading..." : "Analyzing..."}
-            </div>
-          )}
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <button
-            onClick={reset}
-            className="text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 self-start"
-          >
-            Clear all photos
-          </button>
-        </div>
-      ) : (
-        <label
-          htmlFor="camera-input"
-          className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl border-2 border-dashed border-neutral-300 dark:border-neutral-700 text-neutral-400 hover:border-blue-400 hover:bg-blue-50/30 dark:hover:bg-blue-950/20 hover:text-blue-600 dark:hover:text-blue-400 active:bg-blue-50 dark:active:bg-blue-950/40 transition-all cursor-pointer"
-        >
-          <Camera className="w-5 h-5" />
-          <span className="text-sm font-medium">
-            Snap a photo — AI will classify the issue
-          </span>
-        </label>
-      )}
+      <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={handleFile} disabled={loading} className="hidden" id={inputId} />
+      {!classifiedRef.current && <textarea value={contextText} onChange={(e) => setContextText(e.target.value)} placeholder="Optional photo context" aria-label="Photo context" rows={2} className="w-full px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none" />}
+      {(photos.length > 0 || pendingPreview) && <div className="flex gap-2 overflow-x-auto">
+        {photos.map((url, index) => <div key={url} className="relative flex-shrink-0 w-36 h-28">
+          <button type="button" onClick={() => openLightbox(photos, index)} className="relative block w-full h-full rounded-xl overflow-hidden" aria-label={`Open photo ${index + 1}`}><TaskImage src={url} alt={`Task photo ${index + 1}`} fill sizes="144px" className="object-cover" /></button>
+          <button type="button" onClick={() => removePhoto(index)} disabled={loading} aria-label={`Remove photo ${index + 1}`} className="absolute top-1 right-1 bg-black/60 text-white rounded-lg p-2"><X className="w-4 h-4" /></button>
+        </div>)}
+        {pendingPreview && <div className="relative flex-shrink-0 w-36 h-28"><TaskImage src={pendingPreview} alt="Photo uploading" fill sizes="144px" className="object-cover rounded-xl opacity-60" /></div>}
+      </div>}
+      <button type="button" onClick={() => inputRef.current?.click()} disabled={loading} className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl border-2 border-dashed border-neutral-300 dark:border-neutral-700 text-neutral-500 dark:text-neutral-300 disabled:opacity-50">
+        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : photos.length ? <Plus className="w-5 h-5" /> : <Camera className="w-5 h-5" />}
+        {loading ? "Attaching photo…" : photos.length ? "Add another photo" : "Add a photo for suggestions"}
+      </button>
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && photos.length > 0 && !classifiedRef.current && <button type="button" onClick={retryAnalysis} disabled={loading} className="text-sm text-blue-600 text-left">Retry suggestions</button>}
+      {photos.length > 0 && <button type="button" onClick={reset} disabled={loading} className="text-sm text-neutral-500 dark:text-neutral-300 self-start py-2">Clear photos</button>}
     </div>
   );
 }

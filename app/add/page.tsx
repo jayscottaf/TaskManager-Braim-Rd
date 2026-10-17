@@ -1,95 +1,38 @@
-"use client";
-
-import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { PageMenu } from "@/components/page-menu";
 import { TaskForm } from "@/components/task-form";
-import { CameraCapture } from "@/components/camera-capture";
-import type { PhotoClassification } from "@/lib/ai";
-import type { Task } from "@/lib/types";
+import { safeReturnTo } from "@/lib/client-request";
+import { calendarDay } from "@/lib/calendar-state";
+import { AREAS, PRIORITIES, TASK_TYPES, FREQUENCIES, type Task } from "@/lib/types";
 
-function AddTaskContent() {
-  const searchParams = useSearchParams();
+type Params = Record<string, string | string[] | undefined>;
 
-  // Build prefill from URL params (from seasonal banner, calendar, contractors) or camera
-  function getUrlPrefill(): Partial<Task> | undefined {
-    const prefill: Record<string, unknown> = {};
-    const task = searchParams.get("task");
-    if (task) prefill.task = task;
-    const area = searchParams.get("area");
-    if (area) prefill.area = area;
-    const types = searchParams.get("types") || searchParams.get("type");
-    if (types) prefill.type = types.split(",");
-    const priority = searchParams.get("priority");
-    if (priority) prefill.priority = priority;
-    const frequency = searchParams.get("frequency");
-    if (frequency) prefill.frequency = frequency;
-    const dueDate = searchParams.get("dueDate");
-    if (dueDate) prefill.dueDate = { start: dueDate };
-    const contractor = searchParams.get("contractor");
-    if (contractor) prefill.contractorVendor = contractor;
-    return Object.keys(prefill).length > 0 ? (prefill as Partial<Task>) : undefined;
-  }
-
-  const urlPrefill = getUrlPrefill();
-  const [cameraPrefill, setCameraPrefill] = useState<Partial<Task> | null>(null);
-  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
-
-  const prefill = cameraPrefill || urlPrefill || undefined;
-
-  function handleClassified(result: PhotoClassification | null, urls: string[]) {
-    setPhotoUrls(urls);
-    if (result) {
-      setCameraPrefill({
-        task: result.task,
-        type: result.type,
-        area: result.area,
-        priority: result.priority,
-        costEstimate: result.costEstimate,
-      } as Partial<Task>);
-    }
-  }
-
-  return (
-    <>
-      {/* Camera */}
-      <div className="px-5">
-        <CameraCapture onClassified={handleClassified} />
-      </div>
-
-      {/* Form */}
-      <TaskForm
-        mode="create"
-        key={prefill ? JSON.stringify(prefill) : "empty"}
-        task={prefill as Task | undefined}
-        photoUrls={photoUrls}
-      />
-    </>
-  );
-}
-
-export default function AddTaskPage() {
-  return (
-    <div className="flex flex-col gap-6 pt-6 pb-4 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="flex items-center justify-center w-9 h-9 rounded-xl hover:bg-neutral-100 active:bg-neutral-100 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5 text-neutral-600" />
-          </Link>
-          <h1 className="text-2xl font-bold font-display tracking-tight text-neutral-950 dark:text-neutral-50">Add Task</h1>
-        </div>
-        <PageMenu />
-      </div>
-
-      <Suspense fallback={<div className="px-5 py-8 text-center text-neutral-400 text-sm">Loading...</div>}>
-        <AddTaskContent />
-      </Suspense>
-    </div>
-  );
+/** Render capture immediately; URL prefill does not need a client loading screen. */
+export default async function AddTaskPage({ searchParams }: { searchParams: Promise<Params> }) {
+  const params = await searchParams;
+  const get = (key: string) => typeof params[key] === "string" ? params[key] as string : undefined;
+  const returnTo = safeReturnTo(get("returnTo"));
+  const prefill: Partial<Task> = {};
+  const name = get("task");
+  if (name) prefill.task = name;
+  const area = get("area");
+  if (area && AREAS.includes(area as Task["area"] & string)) prefill.area = area as Task["area"];
+  const priority = get("priority");
+  if (priority && PRIORITIES.includes(priority as Task["priority"] & string)) prefill.priority = priority as Task["priority"];
+  const types = (get("types") || get("type") || "").split(",");
+  prefill.type = TASK_TYPES.filter((type) => types.includes(type));
+  const frequency = get("frequency");
+  if (frequency && FREQUENCIES.includes(frequency as Task["frequency"] & string)) prefill.frequency = frequency as Task["frequency"];
+  const date = get("dueDate");
+  if (calendarDay(date)) prefill.dueDate = { start: date! };
+  const contractor = get("contractor");
+  if (contractor) prefill.contractorVendor = contractor;
+  return <div className="flex flex-col gap-6 pb-4 pt-6 animate-fade-in">
+    <header className="flex items-center justify-between px-5">
+      <div className="flex items-center gap-3"><Link href={returnTo || "/"} aria-label="Back to previous screen" className="flex h-11 w-11 items-center justify-center rounded-xl text-muted hover:bg-neutral-100 dark:hover:bg-neutral-800"><ArrowLeft className="h-5 w-5" /></Link><h1 className="font-display text-2xl font-bold tracking-tight">Add task</h1></div>
+      <PageMenu />
+    </header>
+    <TaskForm mode="create" task={prefill} returnTo={returnTo} />
+  </div>;
 }

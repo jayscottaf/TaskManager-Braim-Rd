@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId } from "react";
 import { Loader2 } from "lucide-react";
 import type { FieldDefinition } from "@/lib/feature-templates";
 
@@ -9,32 +9,41 @@ interface DynamicFormProps {
   onSubmit: (data: Record<string, string>) => Promise<void>;
   initialValues?: Record<string, string>;
   submitLabel?: string;
+  busy?: boolean;
 }
 
-export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Save Entry" }: DynamicFormProps) {
+export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Save Entry", busy = false }: DynamicFormProps) {
   const [values, setValues] = useState<Record<string, string>>(initialValues ?? {});
   const [saving, setSaving] = useState(false);
   const prevInitialRef = useRef(initialValues);
+  const touched = useRef(new Set<string>());
+  const id = useId();
+  const [error, setError] = useState<string | null>(null);
 
   // Merge in new initialValues when they change (e.g. from a scan or opening edit)
   useEffect(() => {
     if (initialValues && initialValues !== prevInitialRef.current) {
       prevInitialRef.current = initialValues;
-      setValues((prev) => ({ ...prev, ...initialValues }));
+      setValues((prev) => ({ ...prev, ...Object.fromEntries(Object.entries(initialValues).filter(([key]) => !touched.current.has(key) && !prev[key])) }));
     }
   }, [initialValues]);
 
   function set(name: string, value: string) {
+    touched.current.add(name);
     setValues((prev) => ({ ...prev, [name]: value }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!values[schema[0].name]?.trim()) return;
+    if (busy || saving || !values[schema[0].name]?.trim()) return;
     setSaving(true);
+    setError(null);
     try {
       await onSubmit(values);
       setValues({});
+      touched.current.clear();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save. Your entries are still here.");
     } finally {
       setSaving(false);
     }
@@ -45,16 +54,18 @@ export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Sa
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-warning">{error}</p>}
       {schema.map((field, i) => {
         if (field.hidden) return null;
         return (
         <div key={field.name}>
-          <label className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-1.5">
+          <label htmlFor={`${id}-${i}`} className="block text-xs font-medium uppercase tracking-wide text-neutral-500 mb-1.5">
             {field.name} {i === 0 && "*"}
           </label>
 
           {field.type === "select" ? (
             <select
+              id={`${id}-${i}`}
               value={values[field.name] || ""}
               onChange={(e) => set(field.name, e.target.value)}
               className={inputClass}
@@ -66,6 +77,7 @@ export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Sa
             </select>
           ) : field.type === "date" ? (
             <input
+              id={`${id}-${i}`}
               type="date"
               value={values[field.name] || ""}
               onChange={(e) => set(field.name, e.target.value)}
@@ -74,6 +86,7 @@ export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Sa
             />
           ) : field.type === "url" ? (
             <input
+              id={`${id}-${i}`}
               type="url"
               value={values[field.name] || ""}
               onChange={(e) => set(field.name, e.target.value)}
@@ -82,6 +95,7 @@ export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Sa
             />
           ) : field.type === "textarea" ? (
             <textarea
+              id={`${id}-${i}`}
               value={values[field.name] || ""}
               onChange={(e) => set(field.name, e.target.value)}
               placeholder={field.placeholder || ""}
@@ -90,6 +104,7 @@ export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Sa
             />
           ) : field.type === "number" ? (
             <input
+              id={`${id}-${i}`}
               type="number"
               value={values[field.name] || ""}
               onChange={(e) => set(field.name, e.target.value)}
@@ -100,6 +115,7 @@ export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Sa
             />
           ) : (
             <input
+              id={`${id}-${i}`}
               type="text"
               value={values[field.name] || ""}
               onChange={(e) => set(field.name, e.target.value)}
@@ -114,10 +130,10 @@ export function DynamicForm({ schema, onSubmit, initialValues, submitLabel = "Sa
 
       <button
         type="submit"
-        disabled={saving || !values[schema[0].name]?.trim()}
+        disabled={busy || saving || !values[schema[0].name]?.trim()}
         className="w-full py-2.5 rounded-xl bg-blue-600 text-white font-semibold text-sm disabled:opacity-50 hover:bg-blue-700 active:scale-[0.99] transition-all"
       >
-        {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : submitLabel}
+        {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : busy ? "Saving photo…" : submitLabel}
       </button>
     </form>
   );

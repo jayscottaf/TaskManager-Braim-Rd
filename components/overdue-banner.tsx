@@ -1,49 +1,30 @@
-import { isPast, isWithinInterval, addDays, format } from "date-fns";
-import { AlertTriangle, Clock } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 import type { Task } from "@/lib/types";
+import { isOverdueDeadline } from "@/lib/home-plan";
 
+/** Used only where the deadline task itself is not already shown. */
 export function OverdueBanner({ tasks }: { tasks: Task[] }) {
-  const now = new Date();
-  const today = format(now, "yyyy-MM-dd");
-
-  const overdue = tasks.filter(
-    (t) =>
-      t.dueDate &&
-      t.status !== "Completed" &&
-      t.dueDate.start < today
-  );
-
-  const dueSoon = tasks.filter(
-    (t) =>
-      t.dueDate &&
-      t.status !== "Completed" &&
-      t.dueDate.start >= today &&
-      isWithinInterval(new Date(t.dueDate.start + "T00:00:00"), {
-        start: now,
-        end: addDays(now, 3),
-      })
-  );
-
-  if (overdue.length === 0 && dueSoon.length === 0) return null;
-
+  const deadlines = tasks.filter((task) => isOverdueDeadline(task));
+  if (!deadlines.length) return null;
   return (
-    <div className="flex flex-col gap-2 px-5">
-      {overdue.length > 0 && (
-        <div className="flex items-center gap-3 bg-red-50/50 border-l-2 border-l-red-500 rounded-xl px-4 py-3">
-          <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
-          <span className="text-sm text-red-700 font-semibold">
-            {overdue.length} overdue task{overdue.length > 1 ? "s" : ""}
-          </span>
-        </div>
-      )}
-      {dueSoon.length > 0 && (
-        <div className="flex items-center gap-3 bg-orange-50/50 border-l-2 border-l-orange-400 rounded-xl px-4 py-3">
-          <Clock className="w-4 h-4 text-orange-600 flex-shrink-0" />
-          <span className="text-sm text-orange-700 font-medium">
-            {dueSoon.length} task{dueSoon.length > 1 ? "s" : ""} due in the next 3 days
-          </span>
-        </div>
-      )}
+    <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/20">
+      <p className="flex items-center gap-2 text-sm font-medium text-red-700 dark:text-red-400">
+        <AlertTriangle className="h-4 w-4" />
+        {deadlines.length} firm deadline
+        {deadlines.length === 1 ? " needs" : "s need"} attention
+      </p>
+      <div className="mt-2 flex flex-col gap-1">
+        {deadlines.map((task) => (
+          <Link
+            key={task.id}
+            href={`/task/${task.id}`}
+            className="inline-flex min-h-11 items-center text-sm text-neutral-700 underline underline-offset-4 dark:text-neutral-200"
+          >
+            {task.task}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

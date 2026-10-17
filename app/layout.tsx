@@ -5,12 +5,14 @@ import { DesktopSidebar } from "@/components/desktop-sidebar";
 import { ToastProvider } from "@/components/toast";
 import { LightboxProvider } from "@/components/lightbox";
 import { ServiceWorkerRegister } from "@/components/sw-register";
+import { AIPanel } from "@/components/ai-panel";
+import { Suspense } from "react";
 import "./globals.css";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-display",
+  variable: "--font-heading",
 });
 
 export const metadata: Metadata = {
@@ -27,22 +29,20 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#f4f6f3" },
+    { media: "(prefers-color-scheme: dark)", color: "#181b1a" },
   ],
 };
 
 const themeScript = `
-(function(){
+(function(){try {
   var t=localStorage.getItem('theme');
   if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches)){
     document.documentElement.classList.add('dark');
   }
-})();
+} catch (_) {}})();
 `;
 
 export default function RootLayout({
@@ -56,17 +56,18 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="min-h-full bg-[#fafafa] dark:bg-neutral-950 text-neutral-950 dark:text-neutral-50 transition-colors">
-        <DesktopSidebar />
+      <body className="min-h-full bg-background text-foreground transition-colors">
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[110] rounded-lg bg-accent text-on-accent px-4 py-3">Skip to content</a>
+        <Suspense fallback={null}><DesktopSidebar /></Suspense>
         <div className="pt-[env(safe-area-inset-top)] lg:pl-56">
-          <div className="h-0.5 bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400" />
-          <main className="pb-20 lg:pb-6 max-w-2xl lg:max-w-6xl mx-auto">{children}</main>
+          <main id="main-content" className="pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-6 max-w-2xl lg:max-w-6xl mx-auto">{children}</main>
         </div>
         <div className="lg:hidden">
-          <BottomNav />
+          <Suspense fallback={null}><BottomNav /></Suspense>
         </div>
         <ToastProvider />
         <LightboxProvider />
+        <AIPanel />
         <ServiceWorkerRegister />
       </body>
     </html>

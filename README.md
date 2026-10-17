@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Braim Rd household tasks
 
-## Getting Started
+A Next.js app for home maintenance and project ideas, backed by your existing Notion databases. The opening view is a small, chosen plan; the full backlog and optional cost comparisons remain available when needed.
 
-First, run the development server:
+## Development
 
-```bash
+```sh
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The app runs at http://localhost:3000. Use Node.js 22 or 24. Before changing framework conventions, read the installed Next.js documentation referenced by AGENTS.md.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Configure these existing deployment variables in a local `.env.local` when connecting your own services. Never commit real values:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `NOTION_API_KEY` and `NOTION_DATABASE_ID`: Notion integration and task database shared with it.
+- `NOTION_FEATURES_PAGE_ID`: optional parent page for home records and wishlist databases.
+- `OPENAI_API_KEY`: optional AI photo classification and project guidance. Ordinary capture and the daily plan work without AI.
+- `BLOB_READ_WRITE_TOKEN`: photo storage. `BLOB_PUBLIC_HOST` optionally specifies the exact public Blob host if it cannot be derived from the token. The image optimizer is restricted to that store and the app's photo paths. Known legacy Notion/Blob photos use a browser-side fallback.
+- `APP_SECRET` / `NEXT_PUBLIC_APP_SECRET`: existing shared-header compatibility. If enabled, their values must match. The public variable is visible in client code and is not a user login or privacy boundary; household access should be controlled at the hosting layer.
 
-## Learn More
+## Planning and records
 
-To learn more about Next.js, take a look at the following resources:
+- Dates are optional **Plan for** targets. Only the optional **Firm deadline** setting produces overdue warnings.
+- Up to three tasks can be selected for a plan. Time preferences, selections, skipped suggestions, and duration overrides are stored on that browser/device, not synced across household devices.
+- Spending uses recorded actual costs. Undated costs remain visible but are excluded from period totals. Estimates and wishlist ideas are separate comparisons, never an automatic monthly reserve.
+- Photos are resized before transfer; one upload can also produce suggestions. Failed analysis retains the attachment and can be retried without another upload.
+- The first successful task write adds missing Notion checkbox/date/text properties for deadlines and retry recovery. The integration needs permission to update database properties. Reading the task list does not migrate the schema.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Verification
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```sh
+npm run lint
+npm test
+npm run build
+```
 
-## Deploy on Vercel
+Tests use mocked external services. They cover input validation, failed saves, attachments, month-end recurrence, pagination/cache behavior, completion history, planner behavior, and wishlist promotion. They do not write to production Notion, Blob, or OpenAI.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Recurrence and wishlist promotion keep a persisted source identity and retry intent to recover ordinary retries and lost responses. Requests for the same task are serialized within one server process. Notion does not provide a cross-instance unique constraint or transaction; strict exactly-once creation across simultaneous server instances is not guaranteed.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The service worker caches the static shell. Offline navigation shows an explicit offline page; it never substitutes HTML for API JSON or presents stale cached pages as newly saved work.

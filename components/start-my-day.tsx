@@ -1,10 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Sparkles, Check, Clock, EyeOff, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
-import type { DailyFocus } from "@/lib/ai";
+import { Check, Clock, Plus, X } from "lucide-react";
+import type { Task } from "@/lib/types";
+import {
+  addToHomePlan,
+  emptyHomePlan,
+  estimateTaskMinutes,
+  localDateKey,
+  MAX_PLAN_TASKS,
+  PLAN_CHANGED_EVENT,
+  PLAN_STORAGE_KEY,
+  planSuggestions,
+  readHomePlan,
+  reconcileHomePlan,
+  saveHomePlan,
+  type HomePlan,
+} from "@/lib/home-plan";
 import { showToast } from "@/components/toast";
 
 const TIME_PRESETS = [
@@ -12,241 +26,436 @@ const TIME_PRESETS = [
   { label: "30 min", value: 30 },
   { label: "1 hr", value: 60 },
   { label: "2 hr", value: 120 },
-] as const;
+];
 
-export function StartMyDay() {
+export function StartMyDay({ tasks }: { tasks: Task[] }) {
   const router = useRouter();
-  const [focus, setFocus] = useState<DailyFocus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const [acting, setActing] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
-  const [budgetMinutes, setBudgetMinutes] = useState(30);
+  const [plan, setPlan] = useState<HomePlan>(emptyHomePlan);
+  const [ready, setReady] = useState(false);
   const [customMinutes, setCustomMinutes] = useState("");
+  const [acting, setActing] = useState<string | null>(null);
+  const [completedIds, setCompletedIds] = useState<string[]>([]);
+  const [editingEstimate, setEditingEstimate] = useState<string | null>(null);
+  const [estimateDraft, setEstimateDraft] = useState("");
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true);
-        setHidden(new Set());
-        const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-        const res = await fetch(`/api/ai/start-my-day?minutes=${budgetMinutes}`, {
-          headers: secret ? { "x-app-secret": secret } : {},
-        });
-        if (res.ok) setFocus(await res.json());
-      } catch {
-        // silent fail — Start My Day is a bonus feature
-      } finally {
-        setLoading(false);
+    function restore() {
+      const saved = readHomePlan();
+      const reconciled = reconcileHomePlan(saved, tasks);
+      setPlan(reconciled);
+      setReady(true);
+      if (reconciled !== saved) {
+        // Avoid re-entering our own change listener while persisting cleanup.
+        try {
+          localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(reconciled));
+        } catch {
+          setMessage(
+            "Your plan is available now, but this browser could not save it for next time.",
+          );
+        }
       }
     }
-    load();
-  }, [budgetMinutes]);
+    restore();
+    window.addEventListener(PLAN_CHANGED_EVENT, restore);
+    window.addEventListener("storage", restore);
+    window.addEventListener("focus", restore);
+    return () => {
+      window.removeEventListener(PLAN_CHANGED_EVENT, restore);
+      window.removeEventListener("storage", restore);
+      window.removeEventListener("focus", restore);
+    };
+  }, [tasks]);
 
-  async function markDone(taskId: string) {
-    setActing(taskId);
+  function update(next: HomePlan) {
+    setPlan(next);
     try {
-      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-      await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...(secret ? { "x-app-secret": secret } : {}) },
-        body: JSON.stringify({ status: "Completed", dateCompleted: { start: new Date().toISOString().split("T")[0] } }),
-      });
-      setHidden((prev) => new Set(prev).add(taskId));
-      showToast("Task completed!", "success");
-      router.refresh();
+      saveHomePlan(next);
     } catch {
-      showToast("Failed to complete task.", "error");
-    } finally {
-      setActing(null);
+      setMessage(
+        "Your plan is available now, but this browser could not save it for next time.",
+      );
     }
   }
 
-  async function snooze(taskId: string) {
-    setActing(taskId);
-    try {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
-      await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...(secret ? { "x-app-secret": secret } : {}) },
-        body: JSON.stringify({ dueDate: { start: tomorrow.toISOString().split("T")[0] } }),
-      });
-      setHidden((prev) => new Set(prev).add(taskId));
-      showToast("Snoozed to tomorrow", "info");
-      router.refresh();
-    } catch {
-      showToast("Failed to snooze task.", "error");
-    } finally {
-      setActing(null);
+  function commitBudget() {
+    if (!customMinutes.trim()) return;
+    const value = Number(customMinutes);
+    if (!Number.isFinite(value) || value < 10 || value > 480) {
+      setMessage("Choose between 10 and 480 minutes.");
+      return;
     }
+    update({ ...plan, budgetMinutes: Math.round(value) });
+    setMessage("");
   }
 
-  if (loading) {
-    return (
-      <div className="mx-5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm">
-        <div className="flex items-center gap-2 text-neutral-400">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-sm font-medium">Planning your day...</span>
-        </div>
-      </div>
+  function addTask(task: Task) {
+    const next = addToHomePlan(plan, task.id);
+    if (next === plan) return;
+    update(next);
+    setMessage(`Added ${task.task} to your plan.`);
+  }
+
+  function skipTask(task: Task) {
+    update({
+      ...plan,
+      selectedIds: plan.selectedIds.filter((id) => id !== task.id),
+      skippedDate: localDateKey(),
+      skippedIds: [...new Set([...plan.skippedIds, task.id])],
+    });
+    setMessage(
+      "Removed from today's suggestions. Its planned date is unchanged.",
     );
   }
 
-  if (!focus) return null;
-
-  const visibleTasks = focus.tasks.filter((t) => !hidden.has(t.id));
-  const totalMinutes = visibleTasks.reduce((sum, t) => sum + t.estimatedMinutes, 0);
-  const remainingMinutes = Math.max(0, budgetMinutes - totalMinutes);
-
-  function fmtTime(mins: number): string {
-    if (mins >= 60) return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, "0")}`;
-    return `${mins} min`;
+  function commitEstimate(task: Task) {
+    const minutes = Number(estimateDraft);
+    if (!Number.isFinite(minutes) || minutes < 5 || minutes > 1440) {
+      setMessage("Choose a duration between 5 and 1,440 minutes.");
+      return;
+    }
+    update({
+      ...plan,
+      estimates: { ...plan.estimates, [task.id]: Math.round(minutes) },
+    });
+    setEditingEstimate(null);
+    setMessage("Duration saved for your plan on this device.");
   }
 
-  function setBudget(value: number) {
-    setBudgetMinutes(value);
-    setCustomMinutes("");
-  }
-
-  function applyCustomMinutes(value: string) {
-    setCustomMinutes(value);
-    const parsed = Number(value);
-    if (Number.isFinite(parsed) && parsed >= 10 && parsed <= 480) {
-      setBudgetMinutes(Math.round(parsed));
+  async function markDone(task: Task) {
+    setActing(task.id);
+    try {
+      const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(secret ? { "x-app-secret": secret } : {}),
+        },
+        body: JSON.stringify({
+          status: "Completed",
+          dateCompleted: { start: localDateKey() },
+        }),
+      });
+      const result = (await response.json().catch(() => null)) as {
+        saved?: boolean;
+        error?: string;
+      } | null;
+      if (!response.ok && result?.saved) {
+        setCompletedIds((ids) => [...ids, task.id]);
+        const notice =
+          result.error ||
+          "Completion saved, but the next repeat needs retrying. Open the task to finish scheduling.";
+        setMessage(notice);
+        showToast(notice, "error");
+        router.refresh();
+        return;
+      }
+      if (!response.ok) throw new Error("Completion was not saved");
+      setCompletedIds((ids) => [...ids, task.id]);
+      setMessage(`${task.task} completed.`);
+      showToast("Task completed", "success");
+      router.refresh();
+    } catch {
+      setMessage(
+        "Could not save completion. Your task is unchanged. Please try again.",
+      );
+      showToast("Could not save completion. Please try again.", "error");
+    } finally {
+      setActing(null);
     }
   }
 
-  const budgetControls = (
-    <div className="flex flex-col gap-2 mb-3">
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-        {TIME_PRESETS.map((preset) => (
-          <button
-            key={preset.value}
-            onClick={() => setBudget(preset.value)}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors flex-shrink-0 ${
-              budgetMinutes === preset.value && !customMinutes
-                ? "bg-blue-600 text-white"
-                : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-            }`}
-          >
-            {preset.label}
-          </button>
-        ))}
-        <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-xs text-neutral-500 dark:text-neutral-400 flex-shrink-0">
-          Custom
-          <input
-            type="number"
-            min="10"
-            max="480"
-            value={customMinutes}
-            onChange={(e) => applyCustomMinutes(e.target.value)}
-            placeholder="min"
-            className="w-12 bg-transparent text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none"
-          />
-        </label>
-      </div>
-      <div className="flex items-center justify-between text-[11px] text-neutral-400">
-        <span>{fmtTime(budgetMinutes)} available</span>
-        <span>{fmtTime(totalMinutes)} planned - {fmtTime(remainingMinutes)} open</span>
-      </div>
-    </div>
+  const selectedTasks = tasks.filter((task) =>
+    plan.selectedIds.includes(task.id),
   );
+  const isDone = (task: Task) =>
+    task.status === "Completed" || completedIds.includes(task.id);
+  const remainingTasks = selectedTasks.filter((task) => !isDone(task));
+  const totalMinutes = remainingTasks.reduce(
+    (sum, task) => sum + (plan.estimates[task.id] ?? estimateTaskMinutes(task)),
+    0,
+  );
+  const suggestions = planSuggestions(
+    tasks.filter((task) => !completedIds.includes(task.id)),
+    plan,
+  );
+  const finished = selectedTasks.length > 0 && remainingTasks.length === 0;
+  const overBudget = totalMinutes > plan.budgetMinutes;
 
-  if (collapsed) {
+  function duration(task: Task) {
+    const minutes = plan.estimates[task.id] ?? estimateTaskMinutes(task);
     return (
-      <div className="mx-5">
-        <button
-          onClick={() => setCollapsed(false)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-sm text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
+        {editingEstimate === task.id ? (
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              commitEstimate(task);
+            }}
+          >
+            <label className="sr-only" htmlFor={`duration-${task.id}`}>
+              Minutes for {task.task}
+            </label>
+            <input
+              id={`duration-${task.id}`}
+              autoFocus
+              type="number"
+              min="5"
+              max="1440"
+              value={estimateDraft}
+              onChange={(event) => setEstimateDraft(event.target.value)}
+              className="w-20 rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent px-2 py-2 text-base"
+            />
+            <span>min</span>
+            <button className="min-h-11 px-3 text-blue-600 dark:text-blue-400 font-semibold">
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditingEstimate(null)}
+              className="min-h-11 px-2"
+            >
+              Cancel
+            </button>
+          </form>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setEditingEstimate(task.id);
+              setEstimateDraft(String(minutes));
+            }}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-1 text-left underline decoration-neutral-300 underline-offset-4"
+            aria-label={`Edit estimated duration for ${task.task}, currently ${minutes} minutes`}
+          >
+            <Clock className="h-3.5 w-3.5" />
+            About {minutes} min · Edit
+          </button>
+        )}
+        <Link
+          href={`/task/${task.id}?returnTo=%2F`}
+          className="inline-flex min-h-11 items-center px-2 underline decoration-neutral-300 underline-offset-4"
         >
-          <span className="flex items-center gap-2 text-neutral-700 dark:text-neutral-200">
-            <Sparkles className="w-4 h-4 text-blue-500" />
-            Start My Day - {fmtTime(totalMinutes)} planned in {fmtTime(budgetMinutes)}
-          </span>
-          <ChevronDown className="w-4 h-4 text-neutral-400" />
-        </button>
+          Reschedule
+        </Link>
       </div>
     );
   }
 
   return (
-    <div className="mx-5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm animate-fade-in">
-      <div className="flex items-start justify-between mb-3">
+    <section
+      aria-labelledby="your-plan-heading"
+      className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+    >
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-neutral-900 dark:text-neutral-50 font-semibold text-sm flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-blue-500" />
-            Start My Day
-          </h2>
-          <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-0.5">{focus.greeting}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-neutral-400 text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full whitespace-nowrap">
-            {fmtTime(totalMinutes)} / {fmtTime(budgetMinutes)}
-          </span>
-          <button
-            onClick={() => setCollapsed(true)}
-            className="text-neutral-300 dark:text-neutral-600 hover:text-neutral-500 dark:hover:text-neutral-400 transition-colors"
-            title="Collapse"
+          <h2
+            id="your-plan-heading"
+            className="text-xl font-semibold tracking-tight text-neutral-950 dark:text-neutral-50"
           >
-            <ChevronUp className="w-4 h-4" />
-          </button>
+            Your plan
+          </h2>
+          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+            Choose up to three tasks. Everything else is safely saved.
+          </p>
         </div>
       </div>
-
-      {budgetControls}
-
-      {visibleTasks.length === 0 && (
-        <div className="rounded-xl bg-neutral-50 dark:bg-neutral-800/50 px-3 py-4 text-center">
-          <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-50">No good fit for {fmtTime(budgetMinutes)}</p>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">Try 30 minutes or snooze a task.</p>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-2">
-        {visibleTasks.map((t) => (
-          <div
-            key={t.id}
-            className="flex items-center gap-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl px-3 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors"
-          >
-            <Link href={`/task/${t.id}`} className="flex-1 min-w-0 -my-2.5 py-2.5">
-              <div className="flex items-center gap-2 min-w-0">
-                <p className="text-neutral-900 dark:text-neutral-50 text-sm font-medium truncate">{t.task}</p>
-                <span className="px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-300 text-[10px] font-semibold flex-shrink-0">
-                  {t.impactLabel}
-                </span>
-              </div>
-              <p className="text-neutral-500 dark:text-neutral-400 text-[11px]">{t.reason} - ~{fmtTime(t.estimatedMinutes)}</p>
-            </Link>
-            <div className="flex items-center gap-1 flex-shrink-0">
+      {!ready ? (
+        <p className="mt-5 text-sm text-neutral-500" role="status">
+          Loading your saved plan…
+        </p>
+      ) : (
+        <>
+          <fieldset className="mt-5">
+            <legend className="mb-2 text-sm font-medium text-neutral-700 dark:text-neutral-200">
+              How much time do you have?
+            </legend>
+            <div className="flex flex-wrap items-center gap-2">
+              {TIME_PRESETS.map((preset) => (
+                <button
+                  type="button"
+                  key={preset.value}
+                  aria-pressed={plan.budgetMinutes === preset.value}
+                  onClick={() => {
+                    setCustomMinutes("");
+                    update({ ...plan, budgetMinutes: preset.value });
+                  }}
+                  className={`min-h-11 rounded-xl px-3 text-sm font-medium ${plan.budgetMinutes === preset.value ? "bg-blue-600 text-white" : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"}`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+              <label className="flex min-h-11 items-center gap-2 rounded-xl border border-neutral-200 px-3 text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+                Custom
+                <input
+                  type="number"
+                  min="10"
+                  max="480"
+                  aria-label="Custom available minutes"
+                  placeholder="min"
+                  value={customMinutes}
+                  onChange={(event) => setCustomMinutes(event.target.value)}
+                  onBlur={commitBudget}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                  className="w-14 bg-transparent py-2 text-base text-neutral-900 focus:outline-none dark:text-neutral-100"
+                />
+              </label>
+            </div>
+          </fieldset>
+          <p className="mt-3 text-xs text-neutral-500 dark:text-neutral-400">
+            {totalMinutes} min planned · {plan.budgetMinutes} min available
+            {overBudget
+              ? ". You can remove a task or give yourself more time."
+              : ""}
+          </p>
+          {selectedTasks.length === 0 && (
+            <div className="mt-5 rounded-xl bg-neutral-50 p-4 dark:bg-neutral-800/50">
+              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                A small plan is enough.
+              </p>
+              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                Add a suggestion below, or choose from your saved tasks.
+              </p>
+            </div>
+          )}
+          {finished && (
+            <div className="mt-5 rounded-xl bg-blue-50 p-4 dark:bg-blue-950/20">
+              <p className="font-semibold text-neutral-900 dark:text-neutral-100">
+                You finished your plan.
+              </p>
+              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                You did what you chose to do. The rest can wait.
+              </p>
               <button
-                onClick={() => markDone(t.id)}
-                disabled={acting === t.id}
-                className="p-1.5 rounded-lg bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-emerald-500 hover:text-white transition-colors disabled:opacity-50"
-                title="Done"
+                type="button"
+                onClick={() => {
+                  update({ ...plan, selectedIds: [] });
+                  setCompletedIds([]);
+                }}
+                className="mt-2 min-h-11 text-sm font-semibold text-blue-600 dark:text-blue-400"
               >
-                {acting === t.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-              </button>
-              <button
-                onClick={() => snooze(t.id)}
-                disabled={acting === t.id}
-                className="p-1.5 rounded-lg bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-amber-500 hover:text-white transition-colors disabled:opacity-50"
-                title="Snooze to tomorrow"
-              >
-                <Clock className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setHidden((prev) => new Set(prev).add(t.id))}
-                className="p-1.5 rounded-lg bg-neutral-200 dark:bg-neutral-700 text-neutral-400 hover:bg-neutral-300 dark:hover:bg-neutral-600 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
-                title="Not today"
-              >
-                <EyeOff className="w-3.5 h-3.5" />
+                Start a new plan
               </button>
             </div>
+          )}
+          <div className="mt-4 flex flex-col gap-3">
+            {selectedTasks.map((task) => (
+              <article
+                key={task.id}
+                className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800"
+              >
+                <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => markDone(task)}
+                    disabled={acting !== null || isDone(task)}
+                    aria-label={`Complete ${task.task}`}
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border ${isDone(task) ? "border-blue-600 bg-blue-600 text-white" : "border-neutral-300 text-neutral-500 dark:border-neutral-600"} disabled:opacity-60`}
+                  >
+                    <Check className="h-5 w-5" />
+                  </button>
+                  <Link
+                    href={`/task/${task.id}?returnTo=%2F`}
+                    className={`flex-1 py-2 text-sm font-semibold leading-relaxed text-neutral-900 dark:text-neutral-100 ${isDone(task) ? "line-through" : ""}`}
+                  >
+                    {task.task}
+                  </Link>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${task.task} from your plan`}
+                    onClick={() => skipTask(task)}
+                    disabled={acting !== null}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-neutral-500"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {!isDone(task) && duration(task)}
+              </article>
+            ))}
           </div>
-        ))}
-      </div>
-    </div>
+          {!finished && plan.selectedIds.length < MAX_PLAN_TASKS && (
+            <div className="mt-6">
+              <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                Suggestions that fit your time
+              </h3>
+              <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                Rough estimates; adjust them to match the whole job.
+              </p>
+              {suggestions.length === 0 && (
+                <p className="mt-3 text-sm text-neutral-500 dark:text-neutral-400">
+                  No whole task fits the remaining time. You can choose any
+                  saved task or leave your plan as it is.
+                </p>
+              )}
+              {suggestions.map((task) => (
+                <article
+                  key={task.id}
+                  className="mt-3 rounded-xl bg-neutral-50 p-4 dark:bg-neutral-800/50"
+                >
+                  <Link
+                    href={`/task/${task.id}?returnTo=%2F`}
+                    className="text-sm font-medium leading-relaxed text-neutral-900 dark:text-neutral-100"
+                  >
+                    {task.task}
+                  </Link>
+                  {duration(task)}
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => addTask(task)}
+                      className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-blue-600 dark:text-blue-400"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add to plan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => skipTask(task)}
+                      className="min-h-11 rounded-lg px-3 text-sm text-neutral-500 dark:text-neutral-400"
+                    >
+                      Not today
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+          <Link
+            href="/?list=all"
+            className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-blue-600 dark:text-blue-400"
+          >
+            Choose from all tasks →
+          </Link>
+        </>
+      )}
+      <p
+        role="status"
+        aria-live="polite"
+        className="mt-2 text-sm text-neutral-500 dark:text-neutral-400"
+      >
+        {message}
+      </p>
+    </section>
   );
+}
+
+/** Reconcile deleted picks even when the user stays in the full task list. */
+export function HomePlanStorageSync({ tasks }: { tasks: Task[] }) {
+  useEffect(() => {
+    const saved = readHomePlan();
+    const reconciled = reconcileHomePlan(saved, tasks);
+    if (reconciled !== saved) {
+      try {
+        saveHomePlan(reconciled);
+      } catch {
+        /* No destructive storage fallback. */
+      }
+    }
+  }, [tasks]);
+  return null;
 }

@@ -10,8 +10,7 @@ import { DynamicForm } from "@/components/dynamic-form";
 import { PaintScanner } from "@/components/paint-scanner";
 import { ColorantTable } from "@/components/colorant-table";
 import { openLightbox } from "@/components/lightbox";
-
-const FULL_DISPLAY_FIELDS = new Set(["Colorant Formula"]);
+import { TaskImage } from "@/components/task-image";
 
 export default function FeaturePage() {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +27,7 @@ export default function FeaturePage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [selectedItem, setSelectedItem] = useState<Record<string, any> | null>(null);
   const [editing, setEditing] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
 
   const loadItems = useCallback(async (databaseId: string, archived = false) => {
     setLoading(true);
@@ -91,7 +91,7 @@ export default function FeaturePage() {
   });
 
   async function handleAdd(data: Record<string, string>) {
-    if (!dbId) return;
+    if (!dbId || photoBusy) return;
     try {
       const res = await fetch(`/api/features/${id}/items`, {
         method: "POST", headers: authHeaders(),
@@ -101,7 +101,7 @@ export default function FeaturePage() {
       setShowForm(false);
       setScanData(undefined);
       loadItems(dbId, showArchived);
-    } catch (e: unknown) { setError((e as Error).message); }
+    } catch (e: unknown) { setError((e as Error).message); throw e; }
   }
 
   async function handleEdit(data: Record<string, string>) {
@@ -115,7 +115,7 @@ export default function FeaturePage() {
       setEditing(false);
       setSelectedItem(null);
       loadItems(dbId, showArchived);
-    } catch (e: unknown) { setError((e as Error).message); }
+    } catch (e: unknown) { setError((e as Error).message); throw e; }
   }
 
   async function handleArchive(pageId: string) {
@@ -233,8 +233,8 @@ export default function FeaturePage() {
           <div className="flex flex-col gap-4 mx-5">
             {selectedItem["Photo"] && (
               <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                {/* Stored photos use responsive, lazy-loaded previews. */}
+                <TaskImage
                   src={selectedItem["Photo"]}
                   alt={selectedItem[titleField] || "Photo"}
                   className="w-full object-contain max-h-72 cursor-pointer"
@@ -364,9 +364,9 @@ export default function FeaturePage() {
       {showForm && (
         <div className="mx-5 bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5 flex flex-col gap-4">
           {id === "paint-tracker" && (
-            <PaintScanner onScanned={(data) => setScanData(data)} />
+            <PaintScanner onScanned={(data) => setScanData(data)} onBusyChange={setPhotoBusy} />
           )}
-          <DynamicForm schema={template.schema} onSubmit={handleAdd} initialValues={scanData} />
+          <DynamicForm schema={template.schema} onSubmit={handleAdd} initialValues={scanData} busy={photoBusy} />
         </div>
       )}
 
@@ -405,8 +405,8 @@ export default function FeaturePage() {
                 className={`bg-white dark:bg-neutral-900 rounded-2xl shadow-sm overflow-hidden transition-all hover:shadow-md active:scale-[0.99] text-left w-full ${isArchived ? "opacity-50" : ""}`}
               >
                 {item["Photo"] && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  // Stored photos use responsive, lazy-loaded previews.
+                  <TaskImage
                     src={item["Photo"]}
                     alt={item[titleField] || "Photo"}
                     className="w-full h-36 object-cover"

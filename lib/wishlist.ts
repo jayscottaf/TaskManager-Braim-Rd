@@ -1,6 +1,9 @@
 import { Client } from "@notionhq/client";
 import type { DatabaseObjectResponse, PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import { FEATURES_PAGE_ID } from "./feature-db";
+import { CACHE_TTL, clearCachePrefix, getOrLoadCached } from "./cache";
+import { createTask, findWishlistTask } from "./notion";
+import type { Area, TaskType, Priority } from "./types";
 
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
@@ -28,28 +31,21 @@ export interface WishListItem {
   tags: string[];
   notes: string | null;
   _status: string;
+  promotedTaskId?: string | null;
 }
 
-/** Helper: get the active cost/roi based on costMode */
-export function getActiveCost(item: WishListItem): number | null {
-  return item.costMode === "Hired Out" ? item.hiredCost : item.diyCost;
-}
-export function getActiveRoi(item: WishListItem): number | null {
-  return item.costMode === "Hired Out" ? item.hiredRoi : item.diyRoi;
-}
-export function getActiveRoiRating(item: WishListItem): string | null {
-  return item.costMode === "Hired Out" ? item.hiredRoiRating : item.diyRoiRating;
-}
+import { getActiveCost } from "./wishlist-values";
+export { getActiveCost, getActiveRoi, getActiveRoiRating } from "./wishlist-values";
 
 export interface CreateWishListInput {
   project: string;
   description?: string;
   aiPlan?: string;
-  diyCost?: number;
-  hiredCost?: number;
-  valueAdd?: number;
-  diyRoi?: number;
-  hiredRoi?: number;
+  diyCost?: number | null;
+  hiredCost?: number | null;
+  valueAdd?: number | null;
+  diyRoi?: number | null;
+  hiredRoi?: number | null;
   diyRoiRating?: string;
   hiredRoiRating?: string;
   diyDifficulty?: string;
@@ -140,6 +136,7 @@ const DB_PROPERTIES = {
   Photos: { rich_text: {} },
   Tags: { multi_select: { options: [] } },
   Notes: { rich_text: {} },
+  "Promoted Task ID": { rich_text: {} },
   _Status: {
     select: {
       options: [{ name: "Active" }, { name: "Archived" }],
@@ -151,55 +148,44 @@ const DB_PROPERTIES = {
  * Find or create the Wish List database under the features parent page.
  */
 let cachedDbId: string | null = null;
+let databasePromise: Promise<string> | null = null;
 
 export async function getOrCreateDatabase(): Promise<string> {
   if (cachedDbId) return cachedDbId;
-
-  const children = await notion.blocks.children.list({
-    block_id: FEATURES_PAGE_ID,
-    page_size: 100,
-  });
-
-  for (const block of children.results) {
-    if (!("type" in block) || block.type !== "child_database") continue;
-    try {
-      const db = await notion.databases.retrieve({
-        database_id: block.id,
-      }) as DatabaseObjectResponse;
-      if (db.archived) continue;
-      const title = db.title.map((t) => t.plain_text).join("");
-      if (title === DB_TITLE) {
-        cachedDbId = db.id;
-
-        // Sync schema — add any missing properties
-        const existing = new Set(Object.keys(db.properties));
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const missing: Record<string, any> = {};
-        for (const [key, val] of Object.entries(DB_PROPERTIES)) {
-          if (key === "Project") continue;
-          if (!existing.has(key)) missing[key] = val;
-        }
-        if (Object.keys(missing).length > 0) {
-          await notion.databases.update({ database_id: db.id, properties: missing });
-        }
-
-        return db.id;
-      }
-    } catch {
-      continue;
-    }
+  if (!databasePromise) {
+    databasePromise = resolveDatabase().then((id) => { cachedDbId = id; return id; }).finally(() => { databasePromise = null; });
   }
+  return databasePromise;
+}
 
-  const db = await notion.databases.create({
-    parent: { page_id: FEATURES_PAGE_ID },
-    title: [{ text: { content: DB_TITLE } }],
+async function resolveDatabase(): Promise<string> {
+  let cursor: string | undefined;
+  do {
+    const children = await notion.blocks.children.list({ block_id: FEATURES_PAGE_ID, page_size: 100, start_cursor: cursor });
+    for (const block of children.results) {
+      if (!("type" in block) || block.type !== "child_database" || block.child_database.title !== DB_TITLE) continue;
+      const db = await notion.databases.retrieve({ database_id: block.id }) as DatabaseObjectResponse;
+      if (db.archived || db.title.map((t) => t.plain_text).join("") !== DB_TITLE) continue;
+      // Schema failures must not fall through and create a second database.
+      const existing = new Set(Object.keys(db.properties));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const missing: Record<string, any> = {};
+      for (const [key, value] of Object.entries(DB_PROPERTIES)) {
+        if (key !== "Project" && !existing.has(key)) missing[key] = value;
+      }
+      if (Object.keys(missing).length > 0) await notion.databases.update({ database_id: db.id, properties: missing });
+      return db.id;
+    }
+    cursor = children.has_more ? children.next_cursor ?? undefined : undefined;
+  } while (cursor);
+  const db = await notion.databases.create({ parent: { page_id: FEATURES_PAGE_ID }, title: [{ text: { content: DB_TITLE } }],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    properties: DB_PROPERTIES as any,
-  });
-
-  cachedDbId = db.id;
+    properties: DB_PROPERTIES as any });
   return db.id;
 }
+
+const WISHLIST_CACHE_PREFIX = "wishlist:";
+function invalidateWishList() { clearCachePrefix(WISHLIST_CACHE_PREFIX); }
 
 /** Notion rich_text blocks have a 2000-char limit. Split long strings into chunks. */
 function richTextChunks(text: string): { text: { content: string } }[] {
@@ -278,36 +264,31 @@ function pageToItem(page: PageObjectResponse): WishListItem {
     })(),
     notes: getRichText("Notes"),
     _status: getSelect("_Status") || "Active",
+    promotedTaskId: getRichText("Promoted Task ID") || null,
   };
 }
 
 export async function getWishListItems(showArchived = false): Promise<WishListItem[]> {
+  const items = await getOrLoadCached(`${WISHLIST_CACHE_PREFIX}all`, CACHE_TTL.TASK_LIST, async () => {
+    const dbId = await getOrCreateDatabase();
+    const all: WishListItem[] = [];
+    let cursor: string | undefined;
+    do {
+      const response = await notion.databases.query({ database_id: dbId, page_size: 100, start_cursor: cursor });
+      all.push(...response.results.filter((page): page is PageObjectResponse => "properties" in page).map(pageToItem));
+      cursor = response.has_more ? response.next_cursor ?? undefined : undefined;
+    } while (cursor);
+    return all;
+  });
+  return showArchived ? items : items.filter((item) => item._status !== "Archived" && !item.promotedTaskId);
+}
+
+export async function getWishListItem(id: string): Promise<WishListItem> {
+  const page = await notion.pages.retrieve({ page_id: id });
+  if (!("properties" in page) || page.archived) throw new Error("Wishlist item is unavailable");
   const dbId = await getOrCreateDatabase();
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const queryOpts: any = { database_id: dbId };
-
-  if (!showArchived) {
-    queryOpts.filter = {
-      or: [
-        { property: "_Status", select: { equals: "Active" } },
-        { property: "_Status", select: { is_empty: true } },
-      ],
-    };
-  }
-
-  let response;
-  try {
-    response = await notion.databases.query(queryOpts);
-  } catch {
-    response = await notion.databases.query({ database_id: dbId });
-  }
-
-  const items = response.results
-    .filter((p): p is PageObjectResponse => "properties" in p)
-    .map(pageToItem);
-
-  return showArchived ? items : items.filter((i) => i._status !== "Archived");
+  if (page.parent.type !== "database_id" || page.parent.database_id !== dbId) throw new Error("Wishlist item is unavailable");
+  return pageToItem(page);
 }
 
 export async function createWishListItem(input: CreateWishListInput): Promise<string> {
@@ -339,13 +320,12 @@ export async function createWishListItem(input: CreateWishListInput): Promise<st
   }
   if (input.photos && input.photos.length > 0) properties.Photos = { rich_text: richTextChunks(JSON.stringify(input.photos)) };
   if (input.tags && input.tags.length > 0) properties.Tags = { multi_select: input.tags.map((t) => ({ name: t })) };
-  if (input.notes) properties.Notes = { rich_text: [{ text: { content: input.notes } }] };
+  if (input.notes) properties.Notes = { rich_text: richTextChunks(input.notes) };
 
   const page = await notion.pages.create({
     parent: { database_id: dbId },
     properties,
-  });
-
+  }).finally(invalidateWishList);
   return page.id;
 }
 
@@ -354,6 +334,7 @@ export async function updateWishListItem(
   updates: Partial<CreateWishListInput> & { _action?: string }
 ): Promise<void> {
   if (updates._action === "archive" || updates._action === "restore") {
+    if (updates._action === "restore" && (await getWishListItem(pageId)).promotedTaskId) throw new Error("This idea already has a task. Open the linked task instead.");
     const statusValue = updates._action === "archive" ? "Archived" : "Active";
     try {
       await notion.pages.update({
@@ -367,6 +348,7 @@ export async function updateWishListItem(
         properties: { _Status: { select: { name: statusValue } } },
       });
     }
+    invalidateWishList();
     return;
   }
 
@@ -398,13 +380,48 @@ export async function updateWishListItem(
   }
   if (updates.photos !== undefined) properties.Photos = { rich_text: updates.photos && updates.photos.length > 0 ? richTextChunks(JSON.stringify(updates.photos)) : [] };
   if (updates.tags !== undefined) properties.Tags = { multi_select: (updates.tags ?? []).map((t) => ({ name: t })) };
-  if (updates.notes !== undefined) properties.Notes = updates.notes ? { rich_text: [{ text: { content: updates.notes } }] } : { rich_text: [] };
+  if (updates.notes !== undefined) properties.Notes = updates.notes ? { rich_text: richTextChunks(updates.notes) } : { rich_text: [] };
 
   if (Object.keys(properties).length > 0) {
-    await notion.pages.update({ page_id: pageId, properties });
+    await notion.pages.update({ page_id: pageId, properties }).finally(invalidateWishList);
   }
 }
 
 export async function deleteWishListItem(pageId: string): Promise<void> {
-  await notion.pages.update({ page_id: pageId, archived: true });
+  await notion.pages.update({ page_id: pageId, archived: true }).finally(invalidateWishList);
+}
+
+const promotionLocks = new Map<string, Promise<{ taskId: string; recovered: boolean }>>();
+
+/** Notion has no multi-page transaction. Persisted source identity lets retries recover a created task before archiving its idea. */
+export async function promoteWishListItem(id: string, date?: { start: string; end?: string }): Promise<{ taskId: string; recovered: boolean }> {
+  const active = promotionLocks.get(id);
+  if (active) return active;
+  const operation = promoteItem(id, date).finally(() => { promotionLocks.delete(id); });
+  promotionLocks.set(id, operation);
+  return operation;
+}
+
+async function promoteItem(id: string, date?: { start: string; end?: string }): Promise<{ taskId: string; recovered: boolean }> {
+  // Reading directly also checks that the source belongs to this wishlist database.
+  const item = await getWishListItem(id);
+  let taskId = item.promotedTaskId ?? null;
+  if (!taskId) taskId = (await findWishlistTask(id))?.id ?? null;
+  const recovered = taskId != null;
+  if (!taskId) {
+    if (item._status === "Archived") throw new Error("Restore this idea before adding it to tasks");
+    const category = item.category ?? "General";
+    const area: Record<string, Area> = { Landscaping: "Garden", Driveway: "Driveway/Walkway", Interior: "Living Room", Exterior: "Exterior", Roofing: "Roof", Plumbing: "Bathroom", Electrical: "Living Room", General: "Exterior" };
+    const type: Record<string, TaskType> = { Landscaping: "Landscaping", Driveway: "General Repair", Interior: "Carpentry", Exterior: "Carpentry", Roofing: "General Repair", Plumbing: "Plumbing", Electrical: "Electrical", General: "General Repair" };
+    const notes = [item.description, item.aiPlan ? `AI Plan:\n${item.aiPlan}` : "", item.notes, item.photos.length ? `Photos:\n${item.photos.join("\n")}` : ""].filter(Boolean).join("\n\n");
+    const task = await createTask({
+      task: item.project, status: "Not Started", priority: (["High", "Medium", "Low"].includes(item.priority ?? "") ? item.priority : "Medium") as Priority,
+      area: area[category] ?? "Exterior", type: [type[category] ?? "General Repair"], frequency: "One-time", workMode: item.costMode === "Hired Out" ? "Contractor" : "DIY",
+      ...(getActiveCost(item) != null ? { costEstimate: getActiveCost(item)! } : {}), ...(date ? { dueDate: date } : {}), notes, tags: item.tags,
+    }, undefined, { wishlistSourceId: id });
+    taskId = task.id;
+  }
+  // Link and archive together. If this write fails, retry finds the stored source identity and reuses the task.
+  await notion.pages.update({ page_id: id, properties: { "Promoted Task ID": { rich_text: richTextChunks(taskId) }, _Status: { select: { name: "Archived" } } } }).finally(invalidateWishList);
+  return { taskId, recovered };
 }

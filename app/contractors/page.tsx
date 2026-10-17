@@ -139,7 +139,7 @@ export default async function ContractorsPage() {
                     href={`/add?contractor=${encodeURIComponent(c.name)}${primarySpecialty ? `&type=${encodeURIComponent(primarySpecialty)}` : ""}`}
                     className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 active:scale-[0.98] transition-all flex-shrink-0"
                   >
-                    <Phone className="w-3.5 h-3.5" /> Book
+                    <Phone className="w-3.5 h-3.5" /> Plan task
                   </Link>
                 </div>
                 <div className="grid grid-cols-3 gap-2 mb-3 text-center">

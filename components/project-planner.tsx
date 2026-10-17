@@ -1,65 +1,18 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Camera, ImagePlus, Loader2, Sparkles, X } from "lucide-react";
 import type { WishListPlan } from "@/lib/ai";
 import { openLightbox } from "@/components/lightbox";
-
-const AI_MAX_SIZE = 1024;   // smaller for AI analysis
-const STORAGE_MAX_SIZE = 2048; // larger for display quality
-const AI_QUALITY = 0.7;
-const STORAGE_QUALITY = 0.85;
-
-/** Resize an image file client-side */
-function resizeImage(file: File, maxSize: number, quality: number): Promise<File> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      let { width, height } = img;
-      if (width <= maxSize && height <= maxSize && file.size < 4_000_000) {
-        resolve(file);
-        return;
-      }
-      if (width > height) {
-        height = Math.round((height * maxSize) / width);
-        width = maxSize;
-      } else {
-        width = Math.round((width * maxSize) / height);
-        height = maxSize;
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-      canvas.toBlob(
-        (blob) => resolve(blob ? new File([blob], file.name, { type: "image/jpeg" }) : file),
-        "image/jpeg",
-        quality
-      );
-    };
-    img.onerror = () => resolve(file);
-    img.src = URL.createObjectURL(file);
-  });
-}
-
-async function uploadFile(file: File, secret: string): Promise<string | null> {
-  // Resize for storage to stay under Vercel's 4.5MB body limit
-  const resized = await resizeImage(file, STORAGE_MAX_SIZE, STORAGE_QUALITY);
-  const form = new FormData();
-  form.append("image", resized);
-  const headers: Record<string, string> = secret ? { "x-app-secret": secret } : {};
-  try {
-    const res = await fetch("/api/upload", { method: "POST", headers, body: form });
-    if (res.ok) { const data = await res.json(); return data.url; }
-  } catch { /* ignore */ }
-  return null;
-}
+import { uploadImage } from "@/lib/image-client";
+import { TaskImage } from "@/components/task-image";
 
 interface ProjectPlannerProps {
   onPlanned: (plan: WishListPlan, photoUrls: string[]) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
+export function ProjectPlanner({ onPlanned, onBusyChange }: ProjectPlannerProps) {
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
@@ -68,52 +21,71 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
+  const previewsRef = useRef<string[]>([]);
+  const uploadsRef = useRef(new Map<File, string>());
+  const busyRef = useRef(false);
+  useEffect(() => () => { previewsRef.current.forEach((url) => URL.revokeObjectURL(url)); }, []);
+
   function addFiles(newFiles: FileList | null) {
-    if (!newFiles) return;
-    const added = Array.from(newFiles);
+    if (!newFiles || busyRef.current) return;
+    const added = Array.from(newFiles).filter((file) => file.type.startsWith("image/")).slice(0, Math.max(0, 8 - files.length));
+    if (added.length < newFiles.length) setError("Choose up to eight photos per project.");
     setFiles((prev) => [...prev, ...added]);
-    setPreviews((prev) => [...prev, ...added.map((f) => URL.createObjectURL(f))]);
+    const nextPreviews = [...previewsRef.current, ...added.map((file) => URL.createObjectURL(file))];
+    previewsRef.current = nextPreviews;
+    setPreviews(nextPreviews);
   }
 
   function removePhoto(index: number) {
+    if (busyRef.current) return;
+    URL.revokeObjectURL(previewsRef.current[index]);
+    previewsRef.current = previewsRef.current.filter((_, i) => i !== index);
+    uploadsRef.current.delete(files[index]);
     setFiles((prev) => prev.filter((_, i) => i !== index));
     setPreviews((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function handlePlan() {
-    if (!description.trim()) return;
+    if (!description.trim() || busyRef.current) return;
+    busyRef.current = true;
     setLoading(true);
+    onBusyChange?.(true);
     setError(null);
 
     try {
       const secret = process.env.NEXT_PUBLIC_APP_SECRET || "";
       const headers: Record<string, string> = secret ? { "x-app-secret": secret } : {};
 
-      // Send first photo (resized) to AI for analysis
-      const resizedFile = files[0] ? await resizeImage(files[0], AI_MAX_SIZE, AI_QUALITY) : null;
-      const planForm = new FormData();
-      planForm.append("description", description);
-      if (resizedFile) planForm.append("image", resizedFile);
-
-      // AI plan + upload all photos in parallel
-      const planPromise = fetch("/api/ai/plan-project", { method: "POST", headers, body: planForm });
-      const uploadPromises = files.map((f) => uploadFile(f, secret));
-
-      const [planRes, ...uploadedUrls] = await Promise.all([planPromise, ...uploadPromises]);
-
-      if (!planRes || !planRes.ok) {
-        const errData = await planRes.json().catch(() => null);
-        throw new Error(errData?.error || `Planning failed (${planRes?.status || "no response"})`);
+      // Successful uploads survive planning failures and are reused on retry.
+      const uploads = await Promise.allSettled(files.map(async (file) => {
+        const existing = uploadsRef.current.get(file);
+        if (existing) return existing;
+        const uploaded = await uploadImage(file);
+        uploadsRef.current.set(file, uploaded.url);
+        return uploaded.url;
+      }));
+      // Wait for every in-flight attachment before allowing the parent to save.
+      const failed = uploads.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
+      const photoUrls = uploads.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+      const planRes = await fetch("/api/ai/plan-project", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ description, imageUrl: photoUrls[0] }),
+      });
+      if (!planRes.ok) {
+        const data = await planRes.json().catch(() => null);
+        throw new Error(data?.error || "Planning failed. Please try again.");
       }
-
       const plan: WishListPlan = await planRes.json();
-      const photoUrls = uploadedUrls.filter((u): u is string => u != null);
 
       onPlanned(plan, photoUrls);
     } catch (err: unknown) {
       setError((err as Error).message || "Failed to plan project. Try again.");
     } finally {
+      busyRef.current = false;
       setLoading(false);
+      onBusyChange?.(false);
     }
   }
 
@@ -121,6 +93,7 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
     <div className="flex flex-col gap-4">
       <textarea
         value={description}
+        disabled={loading}
         onChange={(e) => setDescription(e.target.value)}
         placeholder="Describe your dream project... e.g., 'I want to add a Belgium block border around my driveway' or 'Build a new deck off the back of the house'"
         rows={3}
@@ -132,9 +105,11 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
         <div className="flex gap-2 overflow-x-auto pb-1">
           {previews.map((src, i) => (
             <div key={i} className="relative w-20 h-20 flex-shrink-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src} alt={`Photo ${i + 1}`} className="w-20 h-20 object-cover rounded-xl cursor-pointer hover:opacity-90 transition-opacity" onClick={() => openLightbox(previews, i)} />
+              <TaskImage width={80} height={80} sizes="80px" src={src} alt={`Photo ${i + 1}`} className="w-20 h-20 object-cover rounded-xl cursor-pointer hover:opacity-90 transition-opacity" onClick={() => openLightbox(previews, i)} />
               <button
+                type="button"
+                disabled={loading}
+                aria-label={`Remove photo ${i + 1}`}
                 onClick={() => removePhoto(i)}
                 className="absolute -top-1.5 -right-1.5 bg-black/60 text-white rounded-full p-0.5"
               >
@@ -150,6 +125,7 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} className="hidden" />
         <button
           type="button"
+          disabled={loading}
           onClick={() => cameraRef.current?.click()}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-600 text-neutral-400 hover:border-blue-400 hover:text-blue-500 transition-colors text-sm"
         >
@@ -161,6 +137,7 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
         <input ref={galleryRef} type="file" accept="image/*" multiple onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} className="hidden" />
         <button
           type="button"
+          disabled={loading}
           onClick={() => galleryRef.current?.click()}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-600 text-neutral-400 hover:border-blue-400 hover:text-blue-500 transition-colors text-sm"
         >
@@ -169,6 +146,7 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
         </button>
 
         <button
+          type="button"
           onClick={handlePlan}
           disabled={loading || !description.trim()}
           className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50 transition-all"
@@ -187,7 +165,7 @@ export function ProjectPlanner({ onPlanned }: ProjectPlannerProps) {
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     </div>
   );
 }

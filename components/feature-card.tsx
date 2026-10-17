@@ -112,9 +112,6 @@ export function FeatureCard({ template }: { template: FeatureTemplate }) {
             </span>
           </div>
         </div>
-        <span className="text-xs text-neutral-400">
-          {template.popularity.toLocaleString()} installs
-        </span>
       </div>
 
       <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
@@ -147,6 +144,7 @@ export function FeatureCard({ template }: { template: FeatureTemplate }) {
           </button>
           <button
             onClick={handleUninstall}
+            aria-label={`Remove ${template.name} from this device`}
             disabled={uninstalling}
             className="flex items-center gap-1 px-3 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 text-sm font-medium hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400 active:scale-[0.98] disabled:opacity-50 transition-all"
           >
@@ -160,7 +158,7 @@ export function FeatureCard({ template }: { template: FeatureTemplate }) {
       ) : (
         <button
           onClick={handleInstall}
-          disabled={installing}
+            disabled={installing || resolving}
           className="flex items-center justify-center gap-1.5 py-2 rounded-xl bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 text-sm font-medium hover:bg-neutral-800 dark:hover:bg-neutral-200 active:scale-[0.98] disabled:opacity-50 transition-all"
         >
           {installing ? (
@@ -168,7 +166,7 @@ export function FeatureCard({ template }: { template: FeatureTemplate }) {
           ) : (
             <>
               <Download className="w-3.5 h-3.5" />
-              Install
+              Add to home
             </>
           )}
         </button>

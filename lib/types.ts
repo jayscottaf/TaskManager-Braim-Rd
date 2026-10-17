@@ -40,6 +40,10 @@ export interface Task {
   frequency: Frequency | null;
   dueDate: { start: string; end?: string } | null;
   dateCompleted: { start: string; end?: string } | null;
+  isDeadline?: boolean;
+  /** Internal recurrence metadata; never a user-facing classification. */
+  recurrenceAnchor?: { start: string; end?: string } | null;
+  nextOccurrencePending?: boolean;
   assignedTo: string[];
   contractorVendor: string | null;
   costEstimate: number | null;
@@ -53,35 +57,37 @@ export interface Task {
 export interface CreateTaskInput {
   task: string;
   status?: Status;
-  priority?: Priority;
-  area?: Area;
-  subLocation?: string;
+  priority?: Priority | null;
+  area?: Area | null;
+  subLocation?: string | null;
   type?: TaskType[];
-  frequency?: Frequency;
-  dueDate?: { start: string; end?: string };
-  contractorVendor?: string;
-  costEstimate?: number;
-  notes?: string;
+  frequency?: Frequency | null;
+  dueDate?: { start: string; end?: string } | null;
+  isDeadline?: boolean;
+  contractorVendor?: string | null;
+  costEstimate?: number | null;
+  notes?: string | null;
   tags?: string[];
-  workMode?: "DIY" | "Contractor";
+  workMode?: "DIY" | "Contractor" | null;
 }
 
 export interface UpdateTaskInput {
   task?: string;
   status?: Status;
-  priority?: Priority;
-  area?: Area;
-  subLocation?: string;
+  priority?: Priority | null;
+  area?: Area | null;
+  subLocation?: string | null;
   type?: TaskType[];
-  frequency?: Frequency;
+  frequency?: Frequency | null;
   dueDate?: { start: string; end?: string } | null;
+  isDeadline?: boolean;
   dateCompleted?: { start: string; end?: string } | null;
-  contractorVendor?: string;
-  costEstimate?: number;
-  actualCost?: number;
-  notes?: string;
+  contractorVendor?: string | null;
+  costEstimate?: number | null;
+  actualCost?: number | null;
+  notes?: string | null;
   tags?: string[];
-  workMode?: "DIY" | "Contractor";
+  workMode?: "DIY" | "Contractor" | null;
 }
 
 // Constant arrays for form dropdowns
@@ -101,14 +107,14 @@ export const FREQUENCIES: Frequency[] = [
 ];
 
 export const PRIORITY_COLORS: Record<Priority, string> = {
-  High: "bg-red-100 text-red-700 border-red-200",
-  Medium: "bg-yellow-100 text-yellow-700 border-yellow-200",
-  Low: "bg-green-100 text-green-700 border-green-200",
+  High: "bg-gray-100 text-gray-700 border-gray-200",
+  Medium: "bg-gray-100 text-gray-600 border-gray-200",
+  Low: "bg-gray-100 text-gray-600 border-gray-200",
 };
 
 export const STATUS_COLORS: Record<Status, string> = {
   "Not Started": "bg-gray-100 text-gray-700",
   "In Progress": "bg-blue-100 text-blue-700",
-  "On Hold": "bg-orange-100 text-orange-700",
-  "Completed": "bg-green-100 text-green-700",
+  "On Hold": "bg-gray-100 text-gray-600",
+  "Completed": "bg-blue-100 text-blue-700",
 };

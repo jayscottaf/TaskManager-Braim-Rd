@@ -3,17 +3,110 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --color-background: #fafafa;
-  --color-foreground: #0a0a0a;
+  --color-background: var(--app-background);
+  --color-foreground: var(--app-foreground);
+  --color-surface: var(--app-surface);
+  --color-accent: var(--app-accent);
+  --color-on-accent: var(--app-on-accent);
+  --color-muted: var(--app-muted);
+  --color-line: var(--app-line);
+  --color-warning: var(--app-warning);
+  --color-neutral-50: #f2f5f2;
+  --color-neutral-100: #e9ede8;
+  --color-neutral-200: #d9e0d9;
+  --color-neutral-300: #b5beb8;
+  --color-neutral-400: var(--app-muted);
+  --color-neutral-500: var(--app-subtle);
+  --color-neutral-600: #53625a;
+  --color-neutral-700: #3e4944;
+  --color-neutral-800: #2c3430;
+  --color-neutral-900: #222725;
+  --color-neutral-950: #181b1a;
+  --color-blue-50: var(--app-accent-tint);
+  --color-blue-100: var(--app-accent-tint);
+  --color-blue-200: #a9d4c5;
+  --color-blue-300: #8ad2bd;
+  --color-blue-400: var(--app-accent);
+  --color-blue-500: var(--app-accent);
+  --color-blue-600: var(--app-accent);
+  --color-blue-700: var(--app-accent-hover);
+  --color-blue-800: #205b49;
+  --color-blue-900: #203b31;
+  --color-blue-950: #142820;
+  --color-red-50: var(--app-warning-tint);
+  --color-red-100: var(--app-warning-tint);
+  --color-red-400: #f29b96;
+  --color-red-500: var(--app-warning);
+  --color-red-600: var(--app-warning);
+  --color-red-700: var(--app-warning);
+  --color-red-950: #392727;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-display: var(--font-display), Fraunces, Georgia, serif;
+  --font-display: var(--font-heading), Georgia, serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", monospace;
 }
+
+:root {
+  color-scheme: light;
+  --app-background: #f4f6f3;
+  --app-surface: #ffffff;
+  --app-foreground: #1c2722;
+  --app-muted: #53625a;
+  --app-subtle: #5e6f64;
+  --app-line: #d9e0d9;
+  --app-accent: #236e5a;
+  --app-accent-hover: #1c5949;
+  --app-on-accent: #ffffff;
+  --app-accent-tint: #e3f0e9;
+  --app-warning: #a83c36;
+  --app-warning-tint: #f9e9e6;
+  --app-input-line: #839489;
+}
+
+.dark {
+  color-scheme: dark;
+  --app-background: #181b1a;
+  --app-surface: #222725;
+  --app-foreground: #f2f5f2;
+  --app-muted: #b5beb8;
+  --app-subtle: #a3afa7;
+  --app-line: #3e4944;
+  --app-accent: #8ad2bd;
+  --app-accent-hover: #a0ddca;
+  --app-on-accent: #142820;
+  --app-accent-tint: #203b31;
+  --app-warning: #f29b96;
+  --app-warning-tint: #392727;
+  --app-input-line: #728278;
+}
+
+html { scroll-padding-top: 1.5rem; }
 
 body {
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: var(--app-background);
+  color: var(--app-foreground);
+}
+
+/* Existing primary controls share the semantic accent across both themes. */
+@layer utilities {
+  .bg-blue-600, .hover\:bg-blue-700:hover {
+    color: var(--app-on-accent);
+  }
+  .bg-\[\#fafafa\] { background-color: var(--app-background); }
+}
+
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled), summary { cursor: pointer; }
+button:disabled { cursor: wait; }
+input, select, textarea { accent-color: var(--app-accent); }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { border-color: var(--app-input-line); }
+:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 3px; }
+::selection { background: var(--app-accent-tint); color: var(--app-foreground); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
 /* Hide scrollbar for filter chips */

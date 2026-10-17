@@ -1,195 +1,275 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
+import Link from "next/link";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { PageMenu } from "@/components/page-menu";
 import { ErrorDetails } from "@/components/error-details";
-import { getTasks, ensureNotesProperty } from "@/lib/notion";
+import { getTasks } from "@/lib/notion";
 import { TaskCard } from "@/components/task-card";
 import { TaskSection } from "@/components/task-section";
 import { TaskFilters } from "@/components/task-filters";
 import { SeasonalBanner } from "@/components/seasonal-banner";
-import { OverdueBanner } from "@/components/overdue-banner";
-import { AIPanel } from "@/components/ai-panel";
-import { StartMyDay } from "@/components/start-my-day";
+import { HomePlanStorageSync, StartMyDay } from "@/components/start-my-day";
 import { DashboardAside } from "@/components/dashboard-aside";
 import { AreaProgressGroup } from "@/components/area-progress-group";
-import type { Task, Status, Priority, Area } from "@/lib/types";
+import { isOverdueDeadline, localDateKey, taskDateKey } from "@/lib/home-plan";
+import type { Task } from "@/lib/types";
+import { calendarDateKey, householdCalendarNow } from "@/lib/household-date";
 
-interface PageProps {
-  searchParams: Promise<{ status?: string; priority?: string; area?: string; range?: string; q?: string; tag?: string; workMode?: string; view?: string }>;
-}
-
-async function DashboardContent({
-  status,
-  priority,
-  area,
-  range,
-  search,
-  tag,
-  workMode,
-  view,
-}: {
-  status?: Status;
-  priority?: Priority;
-  area?: Area;
+type Filters = {
+  status?: string;
+  priority?: string;
+  area?: string;
   range?: string;
-  search?: string;
+  q?: string;
   tag?: string;
   workMode?: string;
   view?: string;
+  list?: string;
+};
+interface PageProps {
+  searchParams: Promise<Filters>;
+}
+
+async function DashboardContent({
+  params,
+  showAll,
+}: {
+  params: Filters;
+  showAll: boolean;
 }) {
-  let tasks;
+  let allTasks: Task[];
   try {
-    await ensureNotesProperty();
-    tasks = await getTasks({
-      status,
-      priority,
-      area,
-      excludeCompleted: status !== "Completed",
-    });
+    allTasks = await getTasks();
+  } catch (error) {
+    const err = error as { code?: string; message?: string };
+    return (
+      <div className="mx-5 rounded-2xl border border-red-200 bg-red-50 p-5 dark:border-red-900 dark:bg-red-950/20">
+        <p className="font-semibold text-red-700 dark:text-red-400">
+          Could not load your tasks
+        </p>
+        <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">
+          Your saved work is still there. Refresh to try again.
+        </p>
+        <ErrorDetails message={err.message} code={err.code} />
+      </div>
+    );
+  }
+  const today = localDateKey();
+  const weekDate = householdCalendarNow();
+  weekDate.setDate(weekDate.getDate() + 7);
+  const weekEnd = calendarDateKey(weekDate);
+  const activeTasks = allTasks.filter((task) => task.status !== "Completed");
+  // Deadlines remain visible independently of backlog filters and planning time.
+  const deadlines = activeTasks
+    .filter(
+      (task) =>
+        task.isDeadline && taskDateKey(task) && taskDateKey(task)! <= weekEnd,
+    )
+    .sort((a, b) => taskDateKey(a)!.localeCompare(taskDateKey(b)!));
 
-    const rangeDays = parseInt(range || "30", 10);
+  let tasks = allTasks.filter((task) =>
+    params.status ? task.status === params.status : task.status !== "Completed",
+  );
+  if (params.priority)
+    tasks = tasks.filter((task) => task.priority === params.priority);
+  if (params.area) tasks = tasks.filter((task) => task.area === params.area);
+  if (params.workMode)
+    tasks = tasks.filter((task) => task.workMode === params.workMode);
+  if (params.tag)
+    tasks = tasks.filter((task) =>
+      task.tags.some((tag) =>
+        tag.toLowerCase().includes(params.tag!.toLowerCase()),
+      ),
+    );
+  if (params.q?.trim()) {
+    const query = params.q.trim().toLowerCase();
+    tasks = tasks.filter((task) =>
+      [
+        task.task,
+        task.area,
+        task.notes,
+        task.contractorVendor,
+        ...task.tags,
+        ...task.type,
+      ].some((value) => value?.toLowerCase().includes(query)),
+    );
+  } else {
+    const rangeDays = Number(params.range ?? "0");
     if (rangeDays > 0) {
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      const cutoff = new Date(now);
+      const cutoff = householdCalendarNow();
       cutoff.setDate(cutoff.getDate() + rangeDays);
-      tasks = tasks.filter((t) => {
-        if (!t.dueDate) return true;
-        const due = new Date(t.dueDate.start);
-        return due <= cutoff;
-      });
-    }
-
-    if (search) {
-      const q = search.toLowerCase();
-      tasks = tasks.filter((t) =>
-        t.task.toLowerCase().includes(q) ||
-        t.tags.some((tag) => tag.toLowerCase().includes(q)) ||
-        t.area?.toLowerCase().includes(q) ||
-        t.contractorVendor?.toLowerCase().includes(q)
+      const cutoffKey = calendarDateKey(cutoff);
+      tasks = tasks.filter(
+        (task) => !taskDateKey(task) || taskDateKey(task)! <= cutoffKey,
       );
     }
-
-    if (tag) {
-      const tagLower = tag.toLowerCase();
-      tasks = tasks.filter((t) => t.tags.some((tt) => tt.toLowerCase().includes(tagLower)));
-    }
-
-    if (workMode) {
-      tasks = tasks.filter((t) => t.workMode === workMode);
-    }
-
-    const PRIORITY_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-
-    tasks.sort((a, b) => {
-      const aInProg = a.status === "In Progress" ? 1 : 0;
-      const bInProg = b.status === "In Progress" ? 1 : 0;
-      if (aInProg !== bInProg) return bInProg - aInProg;
-
-      const aDate = a.dueDate ? new Date(a.dueDate.start) : null;
-      const bDate = b.dueDate ? new Date(b.dueDate.start) : null;
-      const aOverdue = aDate && aDate < now ? 1 : 0;
-      const bOverdue = bDate && bDate < now ? 1 : 0;
-      if (aOverdue !== bOverdue) return bOverdue - aOverdue;
-
-      const aPri = PRIORITY_ORDER[a.priority || ""] ?? 3;
-      const bPri = PRIORITY_ORDER[b.priority || ""] ?? 3;
-      if (aPri !== bPri) return aPri - bPri;
-
-      if (aDate && bDate) return aDate.getTime() - bDate.getTime();
-      if (aDate) return -1;
-      if (bDate) return 1;
-      return 0;
-    });
-  } catch (err: unknown) {
-    const e = err as { code?: string; status?: number; message?: string };
-    return (
-      <div className="mx-5 p-5 bg-red-50 dark:bg-red-950/30 rounded-2xl">
-        <p className="font-semibold text-red-700 dark:text-red-400">Having trouble connecting</p>
-        <p className="text-sm text-red-600 dark:text-red-400/80 mt-1">Try refreshing in a moment.</p>
-        <ErrorDetails message={e.message} code={e.code} />
-      </div>
-    );
   }
+  tasks.sort(
+    (a, b) =>
+      Number(isOverdueDeadline(b, today)) -
+        Number(isOverdueDeadline(a, today)) ||
+      (taskDateKey(a) ?? "9999").localeCompare(taskDateKey(b) ?? "9999") ||
+      a.task.localeCompare(b.task),
+  );
+  const card = (task: Task) => (
+    <TaskCard key={`${task.id}:${task.status}:${task.priority}`} task={task} />
+  );
 
-  if (tasks.length === 0) {
-    return (
-      <div className="text-center py-16 animate-fade-in">
-        <div className="text-4xl mb-3">🏡</div>
-        <p className="text-lg font-semibold text-neutral-950 dark:text-neutral-50">All clear</p>
-        <p className="text-sm text-neutral-400 mt-1">No tasks match your filters</p>
-      </div>
-    );
-  }
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(today);
-  weekEnd.setDate(weekEnd.getDate() + 7);
-
-  const overdue: Task[] = [];
-  const todayTasks: Task[] = [];
-  const thisWeek: Task[] = [];
-  const later: Task[] = [];
-
-  for (const t of tasks) {
-    if (!t.dueDate) { later.push(t); continue; }
-    const due = new Date(t.dueDate.start);
-    due.setHours(0, 0, 0, 0);
-    if (due < today && t.status !== "Completed") overdue.push(t);
-    else if (due.getTime() === today.getTime()) todayTasks.push(t);
-    else if (due <= weekEnd) thisWeek.push(t);
-    else later.push(t);
-  }
-
-  // Group by area for area view
+  const earlier = tasks.filter(
+    (task) =>
+      !task.isDeadline &&
+      taskDateKey(task) &&
+      taskDateKey(task)! < today &&
+      task.status !== "Completed",
+  );
+  const deadlineIds = new Set(deadlines.map((task) => task.id));
+  const current = tasks.filter(
+    (task) =>
+      !earlier.some((earlierTask) => earlierTask.id === task.id) &&
+      !deadlineIds.has(task.id),
+  );
+  const filtered = Boolean(
+    params.q ||
+      params.status ||
+      params.priority ||
+      params.area ||
+      params.tag ||
+      params.workMode ||
+      (params.range && params.range !== "0"),
+  );
   const areaGroups = new Map<string, Task[]>();
-  for (const t of tasks) {
-    const key = t.area || "Uncategorized";
-    const group = areaGroups.get(key) ?? [];
-    group.push(t);
-    areaGroups.set(key, group);
-  }
-  const sortedAreas = Array.from(areaGroups.entries()).sort((a, b) => {
-    const aComplete = a[1].filter((t) => t.status === "Completed").length / a[1].length;
-    const bComplete = b[1].filter((t) => t.status === "Completed").length / b[1].length;
-    return aComplete - bComplete;
+  tasks.forEach((task) => {
+    const area = task.area || "Uncategorized";
+    areaGroups.set(area, [...(areaGroups.get(area) ?? []), task]);
   });
 
   return (
-    <div className="lg:max-w-6xl lg:mx-auto w-full">
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8">
-        <div className="flex flex-col gap-6">
-          <OverdueBanner tasks={tasks} />
-          {view === "area" ? (
-            <div className="flex flex-col gap-4 px-5 lg:px-0 animate-fade-in">
-              {sortedAreas.map(([areaName, areaTasks]) => (
-                <AreaProgressGroup key={areaName} area={areaName} tasks={areaTasks} />
-              ))}
-            </div>
+    <div className="mx-auto w-full max-w-6xl px-5">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="flex min-w-0 flex-col gap-6">
+          {!showAll ? (
+            <StartMyDay tasks={allTasks} />
           ) : (
-            <div className="flex flex-col gap-6 px-5 lg:px-0 animate-fade-in">
-              <TaskSection title="Overdue" count={overdue.length} accent="overdue">
-                {overdue.map((t) => <TaskCard key={t.id} task={t} />)}
-              </TaskSection>
-              <TaskSection title="Today" count={todayTasks.length}>
-                {todayTasks.map((t) => <TaskCard key={t.id} task={t} />)}
-              </TaskSection>
-              <TaskSection title="This Week" count={thisWeek.length}>
-                {thisWeek.map((t) => <TaskCard key={t.id} task={t} />)}
-              </TaskSection>
-              <TaskSection title="Later" count={later.length}>
-                {later.map((t) => <TaskCard key={t.id} task={t} />)}
-              </TaskSection>
-            </div>
+            <HomePlanStorageSync tasks={allTasks} />
           )}
-          <AIPanel />
+          {deadlines.length > 0 && (
+            <TaskSection
+              title="Firm deadlines needing attention"
+              count={deadlines.length}
+              accent={
+                deadlines.some((task) => isOverdueDeadline(task, today))
+                  ? "overdue"
+                  : undefined
+              }
+            >
+              {deadlines.map(card)}
+            </TaskSection>
+          )}
+          {!showAll ? (
+            <>
+              <Link
+                href="/?list=all"
+                className="flex min-h-16 items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+              >
+                <div>
+                  <p className="font-semibold text-neutral-900 dark:text-neutral-100">
+                    All saved tasks
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                    Review your ideas and plans when you’re ready.
+                  </p>
+                </div>
+                <ArrowRight className="h-5 w-5 shrink-0 text-neutral-400" />
+              </Link>
+              <details className="rounded-2xl border border-neutral-200 p-4 dark:border-neutral-800">
+                <summary className="cursor-pointer text-sm font-medium text-neutral-600 dark:text-neutral-300">
+                  Seasonal ideas
+                </summary>
+                <div className="mt-4 -mx-5">
+                  <SeasonalBanner />
+                </div>
+              </details>
+            </>
+          ) : (
+            <>
+              <Suspense fallback={null}>
+                <TaskFilters />
+              </Suspense>
+              {tasks.length === 0 ? (
+                <div className="rounded-2xl border border-neutral-200 p-8 text-center dark:border-neutral-800">
+                  <h2 className="font-semibold text-neutral-900 dark:text-neutral-100">
+                    {filtered
+                      ? "No matching tasks"
+                      : "A place for your home projects"}
+                  </h2>
+                  <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
+                    {filtered
+                      ? "Try another search or clear your filters."
+                      : "Capture something now. Decide when to tackle it later."}
+                  </p>
+                  <Link
+                    href={filtered ? "/?list=all" : "/add"}
+                    className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-blue-600 dark:text-blue-400"
+                  >
+                    {filtered ? "Clear filters" : "Add your first task"}
+                  </Link>
+                </div>
+              ) : params.view === "area" ? (
+                <div className="flex flex-col gap-4">
+                  {[...areaGroups.entries()]
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([area, areaTasks]) => (
+                      <AreaProgressGroup
+                        key={area}
+                        area={area}
+                        tasks={areaTasks}
+                        population={allTasks.filter(
+                          (task) => (task.area || "Uncategorized") === area,
+                        )}
+                      />
+                    ))}
+                </div>
+              ) : (
+                <>
+                  <TaskSection
+                    title={
+                      params.status === "Completed"
+                        ? "Completed"
+                        : "Saved tasks"
+                    }
+                    count={current.length}
+                  >
+                    {current.map(card)}
+                  </TaskSection>
+                  {earlier.length > 0 && (
+                    <details
+                      open={filtered || undefined}
+                      className="rounded-2xl border border-neutral-200 p-4 dark:border-neutral-800"
+                    >
+                      <summary className="cursor-pointer text-sm font-medium text-neutral-600 dark:text-neutral-300">
+                        Earlier plans{" "}
+                        <span className="ml-2 text-neutral-500">
+                          {earlier.length}
+                        </span>
+                      </summary>
+                      <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
+                        These were target dates. Reschedule whenever it suits
+                        you.
+                      </p>
+                      <div className="mt-4 flex flex-col gap-3">
+                        {earlier.map(card)}
+                      </div>
+                    </details>
+                  )}
+                </>
+              )}
+            </>
+          )}
         </div>
-        <aside className="hidden lg:block mt-6">
-          <DashboardAside tasks={tasks} />
+        <aside className="hidden lg:block">
+          <DashboardAside tasks={allTasks} />
         </aside>
       </div>
     </div>
@@ -198,63 +278,54 @@ async function DashboardContent({
 
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-3 px-5">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <div
-          key={i}
-          className="bg-white dark:bg-neutral-900 rounded-2xl shadow-sm p-5 animate-pulse"
-        >
-          <div className="flex gap-2 mb-3">
-            <div className="h-5 w-14 bg-neutral-100 rounded-md" />
-            <div className="h-5 w-20 bg-neutral-100 rounded-md" />
-          </div>
-          <div className="h-5 w-48 bg-neutral-100 rounded-md" />
-          <div className="flex gap-3 mt-3">
-            <div className="h-4 w-20 bg-neutral-50 rounded-md" />
-            <div className="h-4 w-16 bg-neutral-50 rounded-md" />
-          </div>
-        </div>
-      ))}
+    <div
+      className="mx-auto w-full max-w-6xl px-5"
+      role="status"
+      aria-label="Loading your tasks"
+    >
+      <div className="h-72 animate-pulse rounded-2xl bg-neutral-100 dark:bg-neutral-900" />
     </div>
   );
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
   const params = await searchParams;
-
+  const showAll =
+    params.list === "all" ||
+    Boolean(
+      params.q ||
+        params.status ||
+        params.priority ||
+        params.area ||
+        params.range ||
+        params.tag ||
+        params.workMode ||
+        params.view,
+    );
   return (
-    <div className="flex flex-col gap-6 pt-6 pb-6">
-      {/* Header — hidden on desktop (sidebar has it) */}
-      <div className="flex items-start justify-between px-5 relative lg:hidden">
+    <div className="flex flex-col gap-6 py-6">
+      <header className="mx-auto flex w-full max-w-6xl items-start justify-between gap-3 px-5">
         <div>
-          <h1 className="text-2xl font-bold font-display tracking-[-0.01em] text-neutral-950 dark:text-neutral-50">Braim Rd</h1>
+          {showAll && (
+            <Link
+              href="/"
+              className="mb-3 inline-flex min-h-11 items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Your plan
+            </Link>
+          )}
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+            Braim Rd
+          </p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-neutral-950 dark:text-neutral-50">
+            {showAll ? "All tasks" : "A little care for home."}
+          </h1>
         </div>
         <PageMenu />
-      </div>
-
-      {/* Filters + search (sticky) */}
-      <Suspense fallback={null}>
-        <TaskFilters />
-      </Suspense>
-
-      {/* Start My Day */}
-      <StartMyDay />
-
-      {/* Seasonal Banner (collapsed by default) */}
-      <SeasonalBanner />
-
-      {/* Content: task list + desktop aside */}
+      </header>
       <Suspense fallback={<DashboardSkeleton />}>
-        <DashboardContent
-          status={params.status as Status | undefined}
-          priority={params.priority as Priority | undefined}
-          area={params.area as Area | undefined}
-          range={params.range}
-          search={params.q}
-          tag={params.tag}
-          workMode={params.workMode}
-          view={params.view}
-        />
+        <DashboardContent params={params} showAll={showAll} />
       </Suspense>
     </div>
   );

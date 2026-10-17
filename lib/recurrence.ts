@@ -1,66 +1,62 @@
 import type { Frequency, Task } from "./types";
 
-export function advanceDate(dateStr: string, frequency: Frequency): string {
-  if (!dateStr) return "";
-  const d = new Date(dateStr + "T00:00:00");
-  if (isNaN(d.getTime())) return "";
-  switch (frequency) {
-    case "Monthly":
-      d.setMonth(d.getMonth() + 1);
-      break;
-    case "Quarterly":
-      d.setMonth(d.getMonth() + 3);
-      break;
-    case "Semi-annually":
-      d.setMonth(d.getMonth() + 6);
-      break;
-    case "Annually":
-      d.setFullYear(d.getFullYear() + 1);
-      break;
-  }
-  return d.toISOString().split("T")[0];
+const MONTHS: Record<Frequency, number> = {
+  "One-time": 0,
+  Monthly: 1,
+  Quarterly: 3,
+  "Semi-annually": 6,
+  Annually: 12,
+};
+
+/** Calendar arithmetic uses UTC components, never local/UTC conversion of midnight. */
+export function advanceDate(dateStr: string, frequency: Frequency, steps = 1): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/.exec(dateStr);
+  if (!match || !Number.isInteger(steps) || steps < 0) return "";
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const original = new Date(Date.UTC(year, month, day));
+  if (original.getUTCFullYear() !== year || original.getUTCMonth() !== month || original.getUTCDate() !== day) return "";
+  const months = MONTHS[frequency];
+  if (months === undefined) return "";
+  const target = new Date(Date.UTC(year, month + months * steps, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
 }
 
-/**
- * Generate virtual recurring task instances within a date range.
- * Returns projected copies of the task with advanced due dates.
- */
-export function generateOccurrences(
-  task: Task,
-  rangeStart: string,
-  rangeEnd: string
-): Task[] {
-  if (
-    !task.frequency ||
-    task.frequency === "One-time" ||
-    task.status === "Completed" ||
-    !task.dueDate ||
-    !task.dueDate.start
-  ) {
-    return [];
-  }
+type TaskDate = NonNullable<Task["dueDate"]>;
 
-  const occurrences: Task[] = [];
-  let cursor = advanceDate(task.dueDate.start, task.frequency);
-  if (!cursor) return [];
-
-  // Project forward up to 50 iterations (safety cap)
-  for (let i = 0; i < 50; i++) {
-    if (cursor > rangeEnd) break;
-    if (cursor >= rangeStart) {
-      const duration =
-        task.dueDate.end
-          ? advanceDate(task.dueDate.end, task.frequency)
-          : undefined;
-      occurrences.push({
-        ...task,
-        id: `${task.id}_recur_${cursor}`,
-        dueDate: { start: cursor, ...(duration ? { end: duration } : {}) },
-      });
+/** Use the original anchor on every step so Jan 31 → Feb 28 → Mar 31. */
+export function nextOccurrenceDate(task: Pick<Task, "dueDate" | "frequency" | "recurrenceAnchor">): TaskDate | null {
+  if (!task.dueDate?.start || !task.frequency || task.frequency === "One-time") return null;
+  const anchor = task.recurrenceAnchor ?? task.dueDate;
+  for (let step = 1; step <= 1200; step++) {
+    const start = advanceDate(anchor.start, task.frequency, step);
+    if (!start) return null;
+    if (start > task.dueDate.start.slice(0, 10)) {
+      const end = anchor.end ? advanceDate(anchor.end, task.frequency, step) : undefined;
+      return { start, ...(end && end >= start ? { end } : {}) };
     }
-    cursor = advanceDate(cursor, task.frequency);
-    if (!cursor) break;
   }
+  return null;
+}
 
+/** Generate projected dates from one anchor, advancing both ends of date ranges. */
+export function generateOccurrences(task: Task, rangeStart: string, rangeEnd: string): Task[] {
+  if (!task.frequency || task.frequency === "One-time" || task.status === "Completed" || !task.dueDate?.start) return [];
+  const anchor = task.recurrenceAnchor ?? task.dueDate;
+  const occurrences: Task[] = [];
+  for (let step = 1; step <= 1200; step++) {
+    const start = advanceDate(anchor.start, task.frequency, step);
+    if (!start || start > rangeEnd) break;
+    if (start <= task.dueDate.start.slice(0, 10) || start < rangeStart) continue;
+    const end = anchor.end ? advanceDate(anchor.end, task.frequency, step) : undefined;
+    occurrences.push({
+      ...task,
+      id: `${task.id}_recur_${start}`,
+      dueDate: { start, ...(end && end >= start ? { end } : {}) },
+    });
+  }
   return occurrences;
 }

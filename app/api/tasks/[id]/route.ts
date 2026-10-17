@@ -1,100 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTask, updateTask, deleteTask, createTask } from "@/lib/notion";
+import { getTask, deleteTask, withTaskMutation } from "@/lib/notion";
 import { checkAuth } from "@/lib/auth";
-import { advanceDate } from "@/lib/recurrence";
+import { RecurrencePendingError, updateTaskWithRecurrence } from "../mutations";
+import { validateTaskInput } from "../validation";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+type Context = { params: Promise<{ id: string }> };
+
+export async function GET(request: NextRequest, { params }: Context) {
   const authError = checkAuth(request);
   if (authError) return authError;
-
   try {
     const { id } = await params;
-    const task = await getTask(id);
-    return NextResponse.json(task);
+    return NextResponse.json(await getTask(id));
   } catch (error) {
     console.error("GET /api/tasks/[id] error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch task" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch task" }, { status: 500 });
   }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: NextRequest, { params }: Context) {
   const authError = checkAuth(request);
   if (authError) return authError;
-
+  let body: unknown;
+  try { body = await request.json(); }
+  catch { return NextResponse.json({ error: "Invalid task JSON" }, { status: 400 }); }
+  const validated = validateTaskInput(body, "update");
+  if (!validated.input) return NextResponse.json({ error: validated.error }, { status: 400 });
   try {
     const { id } = await params;
-    const body = await request.json();
-
-    // If marking as completed, fetch current task to stamp completion date and check recurrence.
-    let nextTask = null;
-    if (body.status === "Completed") {
-      const current = await getTask(id);
-      if (!body.dateCompleted && !current.dateCompleted) {
-        body.dateCompleted = { start: new Date().toISOString().split("T")[0] };
-      }
-      const freq = current.frequency;
-      if (
-        freq &&
-        freq !== "One-time" &&
-        current.dueDate?.start
-      ) {
-        const nextStart = advanceDate(current.dueDate.start, freq);
-        const nextEnd = current.dueDate.end
-          ? advanceDate(current.dueDate.end, freq)
-          : undefined;
-        nextTask = await createTask({
-          task: current.task,
-          priority: current.priority ?? undefined,
-          area: current.area ?? undefined,
-          subLocation: current.subLocation ?? undefined,
-          type: current.type.length > 0 ? current.type : undefined,
-          frequency: freq,
-          dueDate: { start: nextStart, ...(nextEnd ? { end: nextEnd } : {}) },
-          contractorVendor: current.contractorVendor ?? undefined,
-          costEstimate: current.costEstimate ?? undefined,
-        });
-      }
-    }
-
-    const task = await updateTask(id, body);
-    return NextResponse.json({
-      ...task,
-      ...(nextTask ? { nextOccurrence: nextTask } : {}),
-    });
+    return NextResponse.json(await updateTaskWithRecurrence(id, validated.input));
   } catch (error) {
+    if (error instanceof RecurrencePendingError) return NextResponse.json({ error: error.message, saved: true, recurrencePending: true, task: error.task }, { status: 502 });
     console.error("PATCH /api/tasks/[id] error:", error);
-    return NextResponse.json(
-      { error: "Failed to update task" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update task" }, { status: 500 });
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(request: NextRequest, { params }: Context) {
   const authError = checkAuth(request);
   if (authError) return authError;
-
   try {
     const { id } = await params;
-    await deleteTask(id);
+    await withTaskMutation(id, () => deleteTask(id));
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("DELETE /api/tasks/[id] error:", error);
-    return NextResponse.json(
-      { error: "Failed to delete task" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to delete task" }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { Task, TaskType, Area, Priority } from "./types";
 import { buildSeasonalContext } from "./seasonal";
+import { emptyHomePlan, estimateTaskMinutes, planSuggestions } from "./home-plan";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "placeholder" });
 
@@ -353,130 +354,23 @@ export interface DailyFocus {
   }>;
 }
 
-function estimateTaskMinutes(task: Task): number {
-  const name = `${task.task} ${task.notes ?? ""}`.toLowerCase();
-  const types = task.type.join(" ").toLowerCase();
-  const cost = task.costEstimate ?? 0;
-  let minutes = 20;
-
-  if (cost >= 1000) minutes = Math.max(minutes, 360);
-  else if (cost >= 500) minutes = Math.max(minutes, 240);
-  else if (cost >= 250) minutes = Math.max(minutes, 120);
-  else if (cost >= 100) minutes = Math.max(minutes, 60);
-  else if (cost >= 50) minutes = Math.max(minutes, 45);
-
-  if (/\b(water damage|ceiling repair|drywall|concrete|header|door alignment|replace|repair)\b/.test(name)) {
-    minutes = Math.max(minutes, 120);
-  }
-  if (/\bpaint|painting|stain|trim|porch\b/.test(`${name} ${types}`)) {
-    minutes = Math.max(minutes, 90);
-  }
-  if (/\binspect|check|tighten|test\b/.test(name)) {
-    minutes = Math.max(minutes, 20);
-  }
-  if (/\bclean|seal|screens|bulbs|lighting fixtures\b/.test(name)) {
-    minutes = Math.max(minutes, 45);
-  }
-
-  return minutes;
-}
-
+/** Fast recommendations work without an AI provider and never mutate task dates. */
 export async function startMyDay(tasks: Task[], budgetMinutes = 30): Promise<DailyFocus> {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const activeTasks = tasks.filter((t) => {
-    if (t.status === "Completed") return false;
-    if (!t.dueDate?.start) return true;
-    const dueDate = new Date(t.dueDate.start);
-    if (Number.isNaN(dueDate.getTime())) return true;
-    dueDate.setHours(0, 0, 0, 0);
-    return dueDate.getTime() <= todayStart.getTime();
-  });
-  if (activeTasks.length === 0) {
-    return { greeting: "All clear! Nothing on your plate today.", budgetMinutes, totalMinutes: 0, tasks: [] };
-  }
-
-  const seasonalContext = buildSeasonalContext();
-  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-
-  const taskList = activeTasks
-    .map(
-      (t) => {
-        const realisticMinutes = estimateTaskMinutes(t);
-        return `- ID: ${t.id} | "${t.task}" | Priority: ${t.priority || "none"} | Area: ${t.area || "none"} | Due: ${t.dueDate?.start || "none"} | Status: ${t.status} | Cost: $${t.costEstimate || "?"} | Minimum realistic time: ${realisticMinutes} minutes | WorkMode: ${t.workMode || "undecided"} | Tags: ${t.tags.join(", ") || "none"}`;
-      }
-    )
-    .join("\n");
-
-  const text = await chat(`You are a smart home assistant for a homeowner in Saratoga Springs, NY. Today is ${today}.
-
-${seasonalContext}
-
-The homeowner has ${budgetMinutes} minutes available today.
-
-Pick the highest-impact set of active tasks that can realistically be completed within ${budgetMinutes} total minutes. Impact means damage prevention, urgency, priority, seasonal timing, cost avoided, and practical home benefit.
-
-Rules:
-- Select only tasks from ACTIVE TASKS. This list excludes completed work and future recurring copies that are not due yet.
-- Total estimatedMinutes must be less than or equal to ${budgetMinutes}.
-- estimatedMinutes must be at least the task's Minimum realistic time.
-- Return fewer tasks if only one or two high-impact tasks fit.
-- If no task fits, return an empty tasks array.
-- Do not include partial tasks that cannot be completed inside the time budget.
-- Do not pick more than 5 tasks.
-
-ACTIVE TASKS:
-${taskList}
-
-Return a JSON object:
-{
-  "greeting": "A friendly 1-sentence greeting that references the day, weather, or season. Be conversational, not robotic.",
-  "budgetMinutes": ${budgetMinutes},
-  "totalMinutes": <sum of selected task estimatedMinutes, never above ${budgetMinutes}>,
-  "tasks": [
-    {
-      "id": "the task ID from the list",
-      "task": "the task name",
-      "reason": "why this should be done today — 5-8 words max",
-      "estimatedMinutes": <realistic number>,
-      "impactLabel": "Prevents damage | Quick win | Overdue | Seasonal | Safety | High value"
-    }
-  ]
-}
-
-Return ONLY the JSON object.`, 1024);
-
-  const match = text.match(/\{[\s\S]*\}/);
-  if (match) {
-    try {
-      const parsed = JSON.parse(match[0]) as DailyFocus;
-      const activeById = new Map(activeTasks.map((t) => [t.id, t]));
-      let totalMinutes = 0;
-      const selectedTasks = (parsed.tasks ?? []).filter((task) => {
-        const sourceTask = activeById.get(task.id);
-        if (!sourceTask) return false;
-        const minutes = Number(task.estimatedMinutes);
-        if (!Number.isFinite(minutes) || minutes <= 0) return false;
-        const roundedMinutes = Math.max(Math.round(minutes), estimateTaskMinutes(sourceTask));
-        if (totalMinutes + roundedMinutes > budgetMinutes) return false;
-        task.estimatedMinutes = roundedMinutes;
-        task.impactLabel = task.impactLabel || "High value";
-        totalMinutes += roundedMinutes;
-        return true;
-      });
-
-      return {
-        greeting: parsed.greeting || "Let's get the best-fit work done today.",
-        budgetMinutes,
-        totalMinutes,
-        tasks: selectedTasks,
-      };
-    } catch {
-      // fall through
-    }
-  }
-
-  return { greeting: "Let's get the best-fit work done today.", budgetMinutes, totalMinutes: 0, tasks: [] };
+  const plan = { ...emptyHomePlan(), budgetMinutes };
+  const selected = planSuggestions(tasks, plan);
+  const suggestions = selected.map((task) => ({
+    id: task.id,
+    task: task.task,
+    reason: "A possible fit; choose what works for you",
+    estimatedMinutes: estimateTaskMinutes(task),
+    impactLabel: "Suggestion",
+  }));
+  return {
+    greeting: "Choose a small plan that fits your day.",
+    budgetMinutes,
+    totalMinutes: suggestions.reduce((sum, task) => sum + task.estimatedMinutes, 0),
+    tasks: suggestions,
+  };
 }
 
 // --- Wish List Project Planner ---
